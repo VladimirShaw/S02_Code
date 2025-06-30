@@ -58,6 +58,15 @@ bool GameFlowManager::startStage(const String& stageId) {
         Serial.println(F("🎵 环节000_0：第一路音频循环播放201号音频"));
         voice.playSong(1, 201);  // 第1路播放201号音频
         return true;
+    } else if (normalizedId == "001_0") {
+        Serial.println(F("🎵 环节001_0：第1路播放0001号音频"));
+        voice.playSong(1, 1);    // 第1路播放0001号音频
+        return true;
+    } else if (normalizedId == "001-1" || normalizedId == "001_1") {
+        Serial.println(F("🎵 环节001_1：第1路播放0001，第2路播放0002"));
+        voice.playSong(1, 1);    // 第1路播放0001号音频
+        voice.playSong(2, 2);    // 第2路播放0002号音频
+        return true;
     } else if (normalizedId == "001_2") {
         Serial.println(F("🎵 环节001_2：第1路播放0001，第2路音量淡出"));
         voice.playSong(1, 1);    // 第1路播放0001号音频
@@ -136,6 +145,8 @@ unsigned long GameFlowManager::getStageElapsedTime() const {
 bool GameFlowManager::isValidStageId(const String& stageId) {
     String normalizedId = normalizeStageId(stageId);
     return (normalizedId == "000_0" || 
+            normalizedId == "001_0" ||
+            normalizedId == "001-1" || normalizedId == "001_1" ||
             normalizedId == "001_2" || 
             normalizedId == "002_0");
 }
@@ -143,6 +154,8 @@ bool GameFlowManager::isValidStageId(const String& stageId) {
 void GameFlowManager::printAvailableStages() {
     Serial.println(F("=== C102可用音频环节列表 ==="));
     Serial.println(F("000_0 - 第一路音频循环播放201号音频"));
+    Serial.println(F("001_0 - 第1路播放0001号音频"));
+    Serial.println(F("001_1 - 第1路播放0001，第2路播放0002"));
     Serial.println(F("001_2 - 第1路播放0001，第2路音量淡出"));
     Serial.println(F("002_0 - 第1路播放0002，第2路播放0201"));
     Serial.println(F("=============================="));
@@ -162,8 +175,12 @@ void GameFlowManager::update() {
     // 根据当前环节更新状态
     if (currentStageId == "000_0") {
         updateStep000();
+    } else if (currentStageId == "001_0") {
+        updateStep001_0();
+    } else if (currentStageId == "001-1" || currentStageId == "001_1") {
+        updateStep001_1();
     } else if (currentStageId == "001_2") {
-        updateStep001();
+        updateStep001_2();
     } else if (currentStageId == "002_0") {
         updateStep002();
     }
@@ -268,7 +285,37 @@ void GameFlowManager::updateStep000() {
     }
 }
 
-void GameFlowManager::updateStep001() {
+void GameFlowManager::updateStep001_0() {
+    unsigned long elapsed = getStageElapsedTime();
+    
+    // 检查全局停止标志
+    if (globalStopped) {
+        return;
+    }
+    
+    // 30秒后报告完成
+    if (!jumpRequested && elapsed >= 30000) {
+        Serial.println(F("⏰ 环节001_0完成"));
+        notifyStageComplete("001_0", elapsed);
+    }
+}
+
+void GameFlowManager::updateStep001_1() {
+    unsigned long elapsed = getStageElapsedTime();
+    
+    // 检查全局停止标志
+    if (globalStopped) {
+        return;
+    }
+    
+    // 45秒后报告完成
+    if (!jumpRequested && elapsed >= 45000) {
+        Serial.println(F("⏰ 环节001_1完成"));
+        notifyStageComplete("001_1", elapsed);
+    }
+}
+
+void GameFlowManager::updateStep001_2() {
     unsigned long elapsed = getStageElapsedTime();
     
     // 检查全局停止标志
