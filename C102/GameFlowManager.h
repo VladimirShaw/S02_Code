@@ -23,13 +23,35 @@
 //
 
 // 000_0 环节：第一路音频循环播放201号音频
-#define STAGE_000_0_REPORT_DELAY    1000     // 1秒后报告完成
+#define STAGE_000_0_CHANNEL         1        // 播放通道
+#define STAGE_000_0_SONG_ID         201      // 播放歌曲ID
+#define STAGE_000_0_CHECK_INTERVAL  500      // 音频检查间隔(ms)
+
+// 001_0 环节：第1路播放0001号音频
+#define STAGE_001_0_CHANNEL         1        // 播放通道
+#define STAGE_001_0_SONG_ID         1        // 播放歌曲ID
+#define STAGE_001_0_DURATION        30000    // 30秒后完成
+
+// 001_1 环节：第1路播放0001，第2路播放0002
+#define STAGE_001_1_CHANNEL1        1        // 第1播放通道
+#define STAGE_001_1_SONG_ID1        1        // 第1播放歌曲ID
+#define STAGE_001_1_CHANNEL2        2        // 第2播放通道
+#define STAGE_001_1_SONG_ID2        2        // 第2播放歌曲ID
+#define STAGE_001_1_DURATION        45000    // 45秒后完成
 
 // 001_2 环节：第1路播放0001，第2路音量淡出
+#define STAGE_001_2_CHANNEL         1        // 播放通道
+#define STAGE_001_2_SONG_ID         1        // 播放歌曲ID
+#define STAGE_001_2_FADE_CHANNEL    2        // 淡出通道
+#define STAGE_001_2_FADE_VOLUME     0        // 淡出音量
 #define STAGE_001_2_DURATION        83347    // 83.347秒总时长
 #define STAGE_001_2_FADE_DURATION   5000     // 5秒淡出时间
 
 // 002_0 环节：第1路播放0002，第2路播放0201
+#define STAGE_002_0_CHANNEL1        1        // 第1播放通道
+#define STAGE_002_0_SONG_ID1        2        // 第1播放歌曲ID
+#define STAGE_002_0_CHANNEL2        2        // 第2播放通道
+#define STAGE_002_0_SONG_ID2        201      // 第2播放歌曲ID
 #define STAGE_002_0_DURATION        60000    // 60秒默认时长（可根据实际音频长度调整）
 
 class GameFlowManager {

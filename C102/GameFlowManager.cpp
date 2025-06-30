@@ -55,27 +55,55 @@ bool GameFlowManager::startStage(const String& stageId) {
     
     // 根据环节ID执行对应逻辑
     if (normalizedId == "000_0") {
-        Serial.println(F("🎵 环节000_0：第一路音频循环播放201号音频"));
-        voice.playSong(1, 201);  // 第1路播放201号音频
+        Serial.print(F("🎵 环节000_0：通道"));
+        Serial.print(STAGE_000_0_CHANNEL);
+        Serial.print(F("循环播放"));
+        Serial.print(STAGE_000_0_SONG_ID);
+        Serial.println(F("号音频"));
+        voice.playSong(STAGE_000_0_CHANNEL, STAGE_000_0_SONG_ID);
         return true;
     } else if (normalizedId == "001_0") {
-        Serial.println(F("🎵 环节001_0：第1路播放0001号音频"));
-        voice.playSong(1, 1);    // 第1路播放0001号音频
+        Serial.print(F("🎵 环节001_0：通道"));
+        Serial.print(STAGE_001_0_CHANNEL);
+        Serial.print(F("播放"));
+        Serial.print(STAGE_001_0_SONG_ID);
+        Serial.println(F("号音频"));
+        voice.playSong(STAGE_001_0_CHANNEL, STAGE_001_0_SONG_ID);
         return true;
     } else if (normalizedId == "001-1" || normalizedId == "001_1") {
-        Serial.println(F("🎵 环节001_1：第1路播放0001，第2路播放0002"));
-        voice.playSong(1, 1);    // 第1路播放0001号音频
-        voice.playSong(2, 2);    // 第2路播放0002号音频
+        Serial.print(F("🎵 环节001_1：通道"));
+        Serial.print(STAGE_001_1_CHANNEL1);
+        Serial.print(F("播放"));
+        Serial.print(STAGE_001_1_SONG_ID1);
+        Serial.print(F("，通道"));
+        Serial.print(STAGE_001_1_CHANNEL2);
+        Serial.print(F("播放"));
+        Serial.println(STAGE_001_1_SONG_ID2);
+        voice.playSong(STAGE_001_1_CHANNEL1, STAGE_001_1_SONG_ID1);
+        voice.playSong(STAGE_001_1_CHANNEL2, STAGE_001_1_SONG_ID2);
         return true;
     } else if (normalizedId == "001_2") {
-        Serial.println(F("🎵 环节001_2：第1路播放0001，第2路音量淡出"));
-        voice.playSong(1, 1);    // 第1路播放0001号音频
-        voice.setVolume(2, 0);   // 第2路音量淡出到0
+        Serial.print(F("🎵 环节001_2：通道"));
+        Serial.print(STAGE_001_2_CHANNEL);
+        Serial.print(F("播放"));
+        Serial.print(STAGE_001_2_SONG_ID);
+        Serial.print(F("，通道"));
+        Serial.print(STAGE_001_2_FADE_CHANNEL);
+        Serial.println(F("音量淡出"));
+        voice.playSong(STAGE_001_2_CHANNEL, STAGE_001_2_SONG_ID);
+        voice.setVolume(STAGE_001_2_FADE_CHANNEL, STAGE_001_2_FADE_VOLUME);
         return true;
     } else if (normalizedId == "002_0") {
-        Serial.println(F("🎵 环节002_0：第1路播放0002，第2路播放0201"));
-        voice.playSong(1, 2);    // 第1路播放0002号音频
-        voice.playSong(2, 201);  // 第2路播放0201号音频
+        Serial.print(F("🎵 环节002_0：通道"));
+        Serial.print(STAGE_002_0_CHANNEL1);
+        Serial.print(F("播放"));
+        Serial.print(STAGE_002_0_SONG_ID1);
+        Serial.print(F("，通道"));
+        Serial.print(STAGE_002_0_CHANNEL2);
+        Serial.print(F("播放"));
+        Serial.println(STAGE_002_0_SONG_ID2);
+        voice.playSong(STAGE_002_0_CHANNEL1, STAGE_002_0_SONG_ID1);
+        voice.playSong(STAGE_002_0_CHANNEL2, STAGE_002_0_SONG_ID2);
         return true;
     } else {
         Serial.print(F("❌ 未定义的C102环节: "));
@@ -153,11 +181,57 @@ bool GameFlowManager::isValidStageId(const String& stageId) {
 
 void GameFlowManager::printAvailableStages() {
     Serial.println(F("=== C102可用音频环节列表 ==="));
-    Serial.println(F("000_0 - 第一路音频循环播放201号音频"));
-    Serial.println(F("001_0 - 第1路播放0001号音频"));
-    Serial.println(F("001_1 - 第1路播放0001，第2路播放0002"));
-    Serial.println(F("001_2 - 第1路播放0001，第2路音量淡出"));
-    Serial.println(F("002_0 - 第1路播放0002，第2路播放0201"));
+    
+    Serial.print(F("000_0 - 通道"));
+    Serial.print(STAGE_000_0_CHANNEL);
+    Serial.print(F("循环播放"));
+    Serial.print(STAGE_000_0_SONG_ID);
+    Serial.print(F("号音频("));
+    Serial.print(STAGE_000_0_CHECK_INTERVAL);
+    Serial.println(F("ms检查间隔)"));
+    
+    Serial.print(F("001_0 - 通道"));
+    Serial.print(STAGE_001_0_CHANNEL);
+    Serial.print(F("播放"));
+    Serial.print(STAGE_001_0_SONG_ID);
+    Serial.print(F("号音频("));
+    Serial.print(STAGE_001_0_DURATION/1000);
+    Serial.println(F("秒后完成)"));
+    
+    Serial.print(F("001_1 - 通道"));
+    Serial.print(STAGE_001_1_CHANNEL1);
+    Serial.print(F("播放"));
+    Serial.print(STAGE_001_1_SONG_ID1);
+    Serial.print(F("，通道"));
+    Serial.print(STAGE_001_1_CHANNEL2);
+    Serial.print(F("播放"));
+    Serial.print(STAGE_001_1_SONG_ID2);
+    Serial.print(F("("));
+    Serial.print(STAGE_001_1_DURATION/1000);
+    Serial.println(F("秒后完成)"));
+    
+    Serial.print(F("001_2 - 通道"));
+    Serial.print(STAGE_001_2_CHANNEL);
+    Serial.print(F("播放"));
+    Serial.print(STAGE_001_2_SONG_ID);
+    Serial.print(F("，通道"));
+    Serial.print(STAGE_001_2_FADE_CHANNEL);
+    Serial.print(F("音量淡出("));
+    Serial.print(STAGE_001_2_DURATION/1000);
+    Serial.println(F("秒后完成)"));
+    
+    Serial.print(F("002_0 - 通道"));
+    Serial.print(STAGE_002_0_CHANNEL1);
+    Serial.print(F("播放"));
+    Serial.print(STAGE_002_0_SONG_ID1);
+    Serial.print(F("，通道"));
+    Serial.print(STAGE_002_0_CHANNEL2);
+    Serial.print(F("播放"));
+    Serial.print(STAGE_002_0_SONG_ID2);
+    Serial.print(F("("));
+    Serial.print(STAGE_002_0_DURATION/1000);
+    Serial.println(F("秒后完成)"));
+    
     Serial.println(F("=============================="));
 }
 
@@ -265,23 +339,15 @@ void GameFlowManager::updateStep000() {
         return;
     }
     
-    // 1秒后报告完成
-    if (!jumpRequested && elapsed >= STAGE_000_0_REPORT_DELAY) {
-        Serial.println(F("⏰ 环节000_0达到报告时间，通知完成"));
-        notifyStageComplete("000_0", elapsed);
-        return;  // 报告完成后停止处理，避免音频循环
-    }
-    
-    // 继续播放音频（如果还没报告完成）
-    if (!jumpRequested) {
-        // 检查音频是否还在播放，如果停止了就重新播放
-        // 注意：这里可能需要根据BY语音模块的实际API调整
-        static unsigned long lastCheckTime = 0;
-        if (elapsed - lastCheckTime > 2000) {  // 每2秒检查一次
-            voice.playSong(1, 201);  // 重新播放201号音频
-            lastCheckTime = elapsed;
-            Serial.println(F("🔄 重新播放201号音频"));
-        }
+    // 持续检查音频状态，如果停止了就重新播放
+    static unsigned long lastCheckTime = 0;
+    if (elapsed - lastCheckTime >= STAGE_000_0_CHECK_INTERVAL) {
+        voice.playSong(STAGE_000_0_CHANNEL, STAGE_000_0_SONG_ID);
+        lastCheckTime = elapsed;
+        Serial.print(F("🔄 重新播放通道"));
+        Serial.print(STAGE_000_0_CHANNEL);
+        Serial.print(F("音频"));
+        Serial.println(STAGE_000_0_SONG_ID);
     }
 }
 
@@ -293,8 +359,8 @@ void GameFlowManager::updateStep001_0() {
         return;
     }
     
-    // 30秒后报告完成
-    if (!jumpRequested && elapsed >= 30000) {
+    // 指定时间后报告完成
+    if (!jumpRequested && elapsed >= STAGE_001_0_DURATION) {
         Serial.println(F("⏰ 环节001_0完成"));
         notifyStageComplete("001_0", elapsed);
     }
@@ -308,8 +374,8 @@ void GameFlowManager::updateStep001_1() {
         return;
     }
     
-    // 45秒后报告完成
-    if (!jumpRequested && elapsed >= 45000) {
+    // 指定时间后报告完成
+    if (!jumpRequested && elapsed >= STAGE_001_1_DURATION) {
         Serial.println(F("⏰ 环节001_1完成"));
         notifyStageComplete("001_1", elapsed);
     }
