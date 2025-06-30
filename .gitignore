@@ -1,0 +1,55 @@
+# Arduino IDE
+*.hex
+*.elf
+*.bin
+*.map
+*.lst
+*.sym
+*.o
+*.d
+*.eep
+*.lss
+*.elf.hex
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Thumbnails
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.ico
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+
+# Build directories
+build/
+dist/
+*.out
+
+# IDE files
+*.sublime-*
+*.idea/
+
+# Cursor AI
+.cursor/ 
