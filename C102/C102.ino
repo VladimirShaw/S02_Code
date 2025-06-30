@@ -107,21 +107,8 @@ void loop() {
             Serial.print(F(">>> "));
             Serial.println(command);
             
-            bool processed = false;
-            
-            // 1. 优先处理语音控制命令
-            if (ENABLE_VOICE && isVoiceCommand(command)) {
-                Serial.print(F("🎵 识别为语音命令: "));
-                Serial.println(command);
-                voice.processSerialCommand(command);  // 统一处理所有通道
-                processed = true;
-            }
-            // 2. 其他命令交给原有命令处理器
-            else {
-                Serial.print(F("🔧 交给系统命令处理器: "));
-                Serial.println(command);
-                processed = commandProcessor.processCommand(command);
-            }
+            // 统一交给CommandProcessor处理所有命令
+            bool processed = commandProcessor.processCommand(command);
             
             if (!processed) {
                 Serial.println(F("未知命令，输入 'help' 查看帮助"));
@@ -148,41 +135,8 @@ void loop() {
     gameFlowManager.update();  // 游戏流程更新
 }
 
-// ========================== 语音命令识别 ==========================
-bool isVoiceCommand(String command) {
-    Serial.print(F("🔍 检查命令: '"));
-    Serial.print(command);
-    Serial.print(F("' 长度: "));
-    Serial.println(command.length());
-    
-    // 识别语音控制命令格式 c1-c4
-    if (command.length() >= 2 && command[0] == 'c' && 
-        command[1] >= '1' && command[1] <= '4') {
-        Serial.println(F("✅ 匹配语音通道命令格式"));
-        return true;  // c1p, c2s, c3:1234 等
-    }
-    
-    // 批量控制命令
-    if (command == "stopall" || command == "playall" || command.startsWith("volall:")) {
-        Serial.println(F("✅ 匹配批量控制命令"));
-        return true;
-    }
-    
-    // 测试命令
-    if (command == "test1" || command == "test201" || command == "testall") {
-        Serial.println(F("✅ 匹配测试命令"));
-        return true;
-    }
-    
-    // 语音系统命令
-    if (command == "status" || command == "s" || command == "help" || command == "h") {
-        Serial.println(F("✅ 匹配系统命令"));
-        return true;
-    }
-    
-    Serial.println(F("❌ 不是语音命令"));
-    return false;
-}
+// ========================== 辅助函数 ==========================
+// 所有命令处理现在统一由CommandProcessor处理
 
 
 
