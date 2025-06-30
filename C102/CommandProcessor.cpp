@@ -12,9 +12,11 @@
 #include "DigitalIOController.h"
 #include "GameFlowManager.h"
 #include "GameStageStateMachine.h"
+#include "BY_VoiceController_Unified.h"
 
 // ========================== 全局实例 ==========================
 CommandProcessor commandProcessor;
+extern BY_VoiceController_Unified voice;
 
 // ========================== 构造和初始化 ==========================
 CommandProcessor::CommandProcessor() : initialized(false), customCommandCallback(nullptr) {
@@ -38,6 +40,11 @@ bool CommandProcessor::processCommand(const String& input) {
     }
     
     debugPrint("处理命令: " + command + " 参数: " + params);
+    
+    // 优先处理音频命令 (c1p, c2s, c1v20 等)
+    if (processVoiceCommand(command, params)) {
+        return true;
+    }
     
     // 优先处理简化PWM命令 (p24, b24, s24)
     if (processSimplePWMCommand(command, params)) {
@@ -75,6 +82,141 @@ bool CommandProcessor::processCommand(const String& input) {
 }
 
 // ========================== 具体命令处理器 ==========================
+
+// ========================== 音频命令处理器 ==========================
+bool CommandProcessor::processVoiceCommand(const String& command, const String& params) {
+    // 通道播放命令: c1p, c2p, c3p, c4p
+    if (command.length() == 3 && command.startsWith("c") && command.endsWith("p")) {
+        int channel = command.charAt(1) - '0';
+        if (channel >= 1 && channel <= 4) {
+            voice.play(channel);
+            Serial.print(F("🎵 播放通道"));
+            Serial.println(channel);
+            return true;
+        }
+    }
+    
+    // 通道停止命令: c1s, c2s, c3s, c4s
+    if (command.length() == 3 && command.startsWith("c") && command.endsWith("s")) {
+        int channel = command.charAt(1) - '0';
+        if (channel >= 1 && channel <= 4) {
+            voice.stop(channel);
+            Serial.print(F("⏹️ 停止通道"));
+            Serial.println(channel);
+            return true;
+        }
+    }
+    
+    // 音量设置命令: c1v20, c2v15, 等
+    if (command.length() >= 4 && command.startsWith("c") && command.charAt(2) == 'v') {
+        int channel = command.charAt(1) - '0';
+        if (channel >= 1 && channel <= 4) {
+            int volume = command.substring(3).toInt();
+            if (volume >= 0 && volume <= 30) {
+                voice.setVolume(channel, volume);
+                Serial.print(F("🔊 通道"));
+                Serial.print(channel);
+                Serial.print(F(" 音量设置为 "));
+                Serial.println(volume);
+                return true;
+            }
+        }
+    }
+    
+    // 播放指定歌曲命令: c1:1234, c2:0001, 等
+    if (command.length() >= 4 && command.startsWith("c") && command.charAt(2) == ':') {
+        int channel = command.charAt(1) - '0';
+        if (channel >= 1 && channel <= 4) {
+            int songID = command.substring(3).toInt();
+            if (songID > 0) {
+                voice.playSong(channel, songID);
+                Serial.print(F("🎵 通道"));
+                Serial.print(channel);
+                Serial.print(F(" 播放歌曲 "));
+                Serial.println(songID);
+                return true;
+            }
+        }
+    }
+    
+    // 下一首命令: c1n, c2n, c3n, c4n
+    if (command.length() == 3 && command.startsWith("c") && command.endsWith("n")) {
+        int channel = command.charAt(1) - '0';
+        if (channel >= 1 && channel <= 4) {
+            voice.nextSong(channel);
+            Serial.print(F("⏭️ 通道"));
+            Serial.print(channel);
+            Serial.println(F(" 下一首"));
+            return true;
+        }
+    }
+    
+    // 上一首命令: c1b, c2b, c3b, c4b
+    if (command.length() == 3 && command.startsWith("c") && command.endsWith("b")) {
+        int channel = command.charAt(1) - '0';
+        if (channel >= 1 && channel <= 4) {
+            voice.prevSong(channel);
+            Serial.print(F("⏮️ 通道"));
+            Serial.print(channel);
+            Serial.println(F(" 上一首"));
+            return true;
+        }
+    }
+    
+    // 批量命令
+    if (command == "playall") {
+        voice.playAll();
+        Serial.println(F("🎵 播放所有通道"));
+        return true;
+    }
+    
+    if (command == "stopall") {
+        voice.stopAll();
+        Serial.println(F("⏹️ 停止所有通道"));
+        return true;
+    }
+    
+    // 批量音量设置: volall:20
+    if (command.startsWith("volall:")) {
+        int volume = command.substring(7).toInt();
+        if (volume >= 0 && volume <= 30) {
+            voice.setVolumeAll(volume);
+            Serial.print(F("🔊 所有通道音量设置为 "));
+            Serial.println(volume);
+            return true;
+        }
+    }
+    
+    // 测试命令
+    if (command == "test1") {
+        voice.playSong(1, 1);
+        Serial.println(F("🎵 测试播放: 通道1播放歌曲1"));
+        return true;
+    }
+    
+    if (command == "test201") {
+        voice.playSong(1, 201);
+        Serial.println(F("🎵 测试播放: 通道1播放歌曲201"));
+        return true;
+    }
+    
+    if (command == "testall") {
+        for (int i = 1; i <= 4; i++) {
+            voice.playSong(i, i);
+        }
+        Serial.println(F("🎵 测试播放: 所有通道播放对应歌曲"));
+        return true;
+    }
+    
+    // 显示音频状态
+    if (command == "vstatus" || command == "voice_status") {
+        voice.printStatus();
+        return true;
+    }
+    
+    return false;
+}
+
 bool CommandProcessor::processPWMCommand(const String& command, const String& params) {
     int pin, value;
     

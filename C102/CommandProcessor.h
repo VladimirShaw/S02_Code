@@ -86,6 +86,14 @@ public:
      */
     bool processDigitalIOCommand(const String& command, const String& params);
     
+    /**
+     * @brief 处理音频控制命令
+     * @param command 命令名
+     * @param params 参数
+     * @return true=处理成功
+     */
+    bool processVoiceCommand(const String& command, const String& params);
+    
     // ========================== 帮助和状态 ==========================
     /**
      * @brief 显示帮助信息
