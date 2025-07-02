@@ -151,55 +151,25 @@ void GameProtocolHandler::handleStep(const String& params) {
         return;
     }
     
-    // 检查是否包含多个环节（逗号分隔）
-    bool isMultipleSteps = (stepId.indexOf(',') >= 0);
+    // 使用GameStageStateMachine跳转到新环节
+    gameStageManager.setStage(stepId);
     
-    if (isMultipleSteps) {
-        Serial.println(F("🎯 检测到多环节并行指令"));
+    // 启动具体的游戏环节
+    if (gameFlowManager.startStage(stepId)) {
+        Serial.print(F("✅ 成功跳转到环节: "));
+        Serial.println(stepId);
         
-        // 使用GameStageStateMachine跳转到第一个环节
-        int firstComma = stepId.indexOf(',');
-        String firstStep = stepId.substring(0, firstComma);
-        firstStep.trim();
-        gameStageManager.setStage(firstStep);
-        
-        // 启动多个并行环节
-        if (gameFlowManager.startMultipleStages(stepId)) {
-            Serial.print(F("✅ 成功启动多个并行环节: "));
-            Serial.println(stepId);
-            
-            // 发送STEP_COMPLETE确认响应
-            String result = "result=OK,session_id=" + sessionId + ",step_id=" + stepId + ",parallel=true";
-            harbingerClient.sendGAMEResponse("STEP_COMPLETE", result);
-        } else {
-            Serial.print(F("❌ 启动并行环节失败: "));
-            Serial.println(stepId);
-            
-            // 发送错误响应
-            String result = "result=ERROR,session_id=" + sessionId + ",step_id=" + stepId + ",message=parallel_start_failed";
-            harbingerClient.sendGAMEResponse("STEP_COMPLETE", result);
-        }
+        // 发送STEP_COMPLETE确认响应
+        String result = "result=OK,session_id=" + sessionId + ",step_id=" + stepId;
+        harbingerClient.sendGAMEResponse("STEP_COMPLETE", result);
     } else {
-        // 单个环节处理（保持原有逻辑）
-        gameStageManager.setStage(stepId);
+        Serial.print(F("ℹ️ 环节无需跳转: "));
+        Serial.print(stepId);
+        Serial.println(F(" (不是此Arduino负责的环节)"));
         
-        // 启动具体的游戏环节
-        if (gameFlowManager.startStage(stepId)) {
-            Serial.print(F("✅ 成功跳转到环节: "));
-            Serial.println(stepId);
-            
-            // 发送STEP_COMPLETE确认响应
-            String result = "result=OK,session_id=" + sessionId + ",step_id=" + stepId;
-            harbingerClient.sendGAMEResponse("STEP_COMPLETE", result);
-        } else {
-            Serial.print(F("ℹ️ 环节无需跳转: "));
-            Serial.print(stepId);
-            Serial.println(F(" (不是此Arduino负责的环节)"));
-            
-            // 发送STEP_COMPLETE确认响应（正常情况，不是错误）
-            String result = "result=OK,session_id=" + sessionId + ",step_id=" + stepId + ",message=not_responsible";
-            harbingerClient.sendGAMEResponse("STEP_COMPLETE", result);
-        }
+        // 发送STEP_COMPLETE确认响应（正常情况，不是错误）
+        String result = "result=OK,session_id=" + sessionId + ",step_id=" + stepId + ",message=not_responsible";
+        harbingerClient.sendGAMEResponse("STEP_COMPLETE", result);
     }
 }
 

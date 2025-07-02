@@ -1,0 +1,25 @@
+# macOS系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Arduino IDE生成的文件
+*.hex
+*.elf
+*.bin
+
+# 临时文件和备份
+*.tmp
+*.bak
+*.swp
+*~
+
+# CSV数据文件（根据需要调整）
+*.csv
+
+# 日志文件
+*.log 
