@@ -755,30 +755,12 @@ void GameFlowManager::updateStep002(int index) {
         Serial.println(STAGE_002_0_SONG_ID2);
     }
     
-    // 30秒时触发多环节跳转
-    if (!stage.state.stage002.multiJumpTriggered && elapsed >= STAGE_002_0_MULTI_JUMP_TIME) {
-        stage.state.stage002.multiJumpTriggered = true;
-        Serial.print(F("🚀 [槽位"));
-        Serial.print(index);
-        Serial.print(F("] 30秒时触发多环节跳转: "));
-        Serial.println(STAGE_002_0_MULTI_JUMP_STAGES);
-        requestMultiStageJump("002_0", STAGE_002_0_MULTI_JUMP_STAGES);
-    }
-    
-    // 60秒后跳转到下一环节或报告完成
+    // 60秒后环节完成（不进行跳转通知）
     if (!stage.jumpRequested && elapsed >= STAGE_002_0_DURATION) {
-        if (strlen(STAGE_002_0_NEXT_STAGE) > 0) {
-            Serial.print(F("⏰ [槽位"));
-            Serial.print(index);
-            Serial.print(F("] 环节002_0完成，跳转到"));
-            Serial.println(STAGE_002_0_NEXT_STAGE);
-            notifyStageComplete("002_0", STAGE_002_0_NEXT_STAGE, elapsed);
-        } else {
-            Serial.print(F("⏰ [槽位"));
-            Serial.print(index);
-            Serial.println(F("] 环节002_0完成"));
-            notifyStageComplete("002_0", elapsed);
-        }
+        Serial.print(F("⏰ [槽位"));
+        Serial.print(index);
+        Serial.println(F("] 环节002_0完成（不进行跳转通知）"));
+        stage.jumpRequested = true;  // 标记为已完成，避免重复执行
     }
 }
 

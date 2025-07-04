@@ -169,7 +169,7 @@
 
 // 环节流程配置
 #define STAGE_002_0_MULTI_JUMP_TIME 30000    // 30秒时触发多环节跳转
-#define STAGE_002_0_MULTI_JUMP_STAGES "005_0,006_0"  // 多环节跳转目标
+#define STAGE_002_0_MULTI_JUMP_STAGES "006_0"  // 多环节跳转目标
 #define STAGE_002_0_DURATION        60000    // 60秒默认时长
 #define STAGE_002_0_NEXT_STAGE      ""       // 跳转目标环节（空字符串表示只报告完成，不跳转）
 
