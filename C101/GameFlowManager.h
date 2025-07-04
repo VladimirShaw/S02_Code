@@ -270,6 +270,112 @@
 #define STAGE_002_0_BUTTERFLY_LIGHT_STATE   HIGH    // 蝴蝶灯状态 (PinA15) - 保持HIGH
 #define STAGE_002_0_AD_FAN_STATE            LOW     // 广告风扇状态 (PinA14)
 
+// ========================== 006_0环节：嘲讽按键游戏配置 ==========================
+// 游戏核心参数
+#define STAGE_006_0_REQUIRED_CORRECT   4        // 需要连续正确次数
+#define STAGE_006_0_SUCCESS_JUMP      "010"     // 成功后跳转目标
+
+// 嘲讽按键呼吸效果配置（10秒循环）
+#define STAGE_006_0_BREATH_CYCLE      10000     // 呼吸循环周期(ms)
+// 按键1呼吸时间配置
+#define STAGE_006_0_TAUNT1_BREATH_1_START    0        // 第1次呼吸亮开始
+#define STAGE_006_0_TAUNT1_BREATH_1_DUR      1500     // 第1次呼吸亮持续
+#define STAGE_006_0_TAUNT1_BREATH_2_START    1500     // 第1次呼吸灭开始
+#define STAGE_006_0_TAUNT1_BREATH_2_DUR      1500     // 第1次呼吸灭持续
+#define STAGE_006_0_TAUNT1_BREATH_3_START    5000     // 第2次呼吸亮开始
+#define STAGE_006_0_TAUNT1_BREATH_3_DUR      1500     // 第2次呼吸亮持续
+#define STAGE_006_0_TAUNT1_BREATH_4_START    6500     // 第2次呼吸灭开始
+#define STAGE_006_0_TAUNT1_BREATH_4_DUR      1500     // 第2次呼吸灭持续
+
+// 按键2-4使用相同配置（可独立调整）
+#define STAGE_006_0_TAUNT2_BREATH_1_START    0
+#define STAGE_006_0_TAUNT2_BREATH_1_DUR      1500
+#define STAGE_006_0_TAUNT2_BREATH_2_START    1500
+#define STAGE_006_0_TAUNT2_BREATH_2_DUR      1500
+#define STAGE_006_0_TAUNT2_BREATH_3_START    5000
+#define STAGE_006_0_TAUNT2_BREATH_3_DUR      1500
+#define STAGE_006_0_TAUNT2_BREATH_4_START    6500
+#define STAGE_006_0_TAUNT2_BREATH_4_DUR      1500
+
+#define STAGE_006_0_TAUNT3_BREATH_1_START    0
+#define STAGE_006_0_TAUNT3_BREATH_1_DUR      1500
+#define STAGE_006_0_TAUNT3_BREATH_2_START    1500
+#define STAGE_006_0_TAUNT3_BREATH_2_DUR      1500
+#define STAGE_006_0_TAUNT3_BREATH_3_START    5000
+#define STAGE_006_0_TAUNT3_BREATH_3_DUR      1500
+#define STAGE_006_0_TAUNT3_BREATH_4_START    6500
+#define STAGE_006_0_TAUNT3_BREATH_4_DUR      1500
+
+#define STAGE_006_0_TAUNT4_BREATH_1_START    0
+#define STAGE_006_0_TAUNT4_BREATH_1_DUR      1500
+#define STAGE_006_0_TAUNT4_BREATH_2_START    1500
+#define STAGE_006_0_TAUNT4_BREATH_2_DUR      1500
+#define STAGE_006_0_TAUNT4_BREATH_3_START    5000
+#define STAGE_006_0_TAUNT4_BREATH_3_DUR      1500
+#define STAGE_006_0_TAUNT4_BREATH_4_START    6500
+#define STAGE_006_0_TAUNT4_BREATH_4_DUR      1500
+
+// 语音IO控制配置
+#define STAGE_006_0_VOICE_TRIGGER_LOW_TIME  1000     // LOW电平保持时间(ms)
+#define STAGE_006_0_VOICE_IO_1              A0       // 第1个语音IO引脚 (C01MA05的IO1)
+#define STAGE_006_0_VOICE_IO_2              16       // 第2个语音IO引脚 (C01MA06的IO1)
+#define STAGE_006_0_VOICE_IO_3              A4       // 第3个语音IO引脚 (C01MA07的IO1)
+#define STAGE_006_0_VOICE_IO_4              A8       // 第4个语音IO引脚 (C01MA08的IO1)
+
+// 错误处理配置
+#define STAGE_006_0_ERROR_WAIT_TIME         3000     // 错误后等待时间(ms)
+#define STAGE_006_0_PLANT_OFF_DELAY         375      // 植物灯熄灭间隔(ms)
+
+// 正确处理配置
+#define STAGE_006_0_PLANT_ON_DELAY          375      // 植物灯点亮间隔(ms)
+#define STAGE_006_0_PLANT_BREATH_DURATION   3000     // 植物灯呼吸周期(ms)
+#define STAGE_006_0_PLANT_BREATH_ON         1500     // 植物灯呼吸亮时间(ms)
+#define STAGE_006_0_PLANT_BREATH_OFF        1500     // 植物灯呼吸灭时间(ms)
+
+// 服务器跳转映射（m%4的结果）
+#define STAGE_006_0_JUMP_MOD_0              "211"    // m%4=0时的跳转结果
+#define STAGE_006_0_JUMP_MOD_1              "213"    // m%4=1时的跳转结果
+#define STAGE_006_0_JUMP_MOD_2              "212"    // m%4=2时的跳转结果
+#define STAGE_006_0_JUMP_MOD_3              "214"    // m%4=3时的跳转结果
+
+// 错误跳转映射（基于总数m）
+#define STAGE_006_0_ERROR_JUMP_1            "3"      // m=1,2时的错误跳转
+#define STAGE_006_0_ERROR_JUMP_2            "4"      // m=3,4时的错误跳转
+#define STAGE_006_0_ERROR_JUMP_3            "5"      // m=5,6时的错误跳转
+
+// ========================== 006_0环节引脚状态配置 ==========================
+// 入口门系统
+#define STAGE_006_0_DOOR_LOCK_STATE         HIGH    // 电磁锁状态 (Pin26) - 保持上锁
+#define STAGE_006_0_DOOR_LIGHT_STATE        LOW     // 指引射灯状态 (Pin25)
+
+// 氛围射灯系统
+#define STAGE_006_0_AMBIENT_LIGHT_STATE     LOW     // 氛围射灯状态 (PinA13)
+
+// 嘲讽按键灯光系统 - 由呼吸效果动态控制
+#define STAGE_006_0_TAUNT_BUTTON1_STATE     LOW     // 按键1灯光状态 (Pin30)
+#define STAGE_006_0_TAUNT_BUTTON2_STATE     LOW     // 按键2灯光状态 (Pin32)
+#define STAGE_006_0_TAUNT_BUTTON3_STATE     LOW     // 按键3灯光状态 (Pin34)
+#define STAGE_006_0_TAUNT_BUTTON4_STATE     LOW     // 按键4灯光状态 (Pin36)
+
+// 画灯谜题系统
+#define STAGE_006_0_PAINTING_LIGHT1_STATE   LOW     // 画射灯1状态 (Pin38)
+#define STAGE_006_0_PAINTING_LIGHT2_STATE   LOW     // 画射灯2状态 (Pin39)
+#define STAGE_006_0_PAINTING_LIGHT3_STATE   LOW     // 画射灯3状态 (Pin40)
+#define STAGE_006_0_PAINTING_LIGHT4_STATE   LOW     // 画射灯4状态 (Pin41)
+#define STAGE_006_0_PAINTING_LIGHT5_STATE   LOW     // 画射灯5状态 (Pin42)
+#define STAGE_006_0_PAINTING_LIGHT6_STATE   LOW     // 画射灯6状态 (Pin43)
+#define STAGE_006_0_PAINTING_LIGHT7_STATE   LOW     // 画射灯7状态 (Pin44)
+#define STAGE_006_0_PAINTING_LIGHT8_STATE   LOW     // 画射灯8状态 (Pin45)
+
+// 提示灯带系统
+#define STAGE_006_0_HINT_LED1_STATE         LOW     // 提示灯带1状态 (PinA11)
+#define STAGE_006_0_HINT_LED2_STATE         LOW     // 提示灯带2状态 (PinA12)
+
+// 蝴蝶灯谜题系统
+#define STAGE_006_0_BUTTERFLY_CARD_STATE    LOW     // 门禁读卡器继电器状态 (Pin27)
+#define STAGE_006_0_BUTTERFLY_LIGHT_STATE   HIGH    // 蝴蝶灯状态 (PinA15) - 保持HIGH
+#define STAGE_006_0_AD_FAN_STATE            LOW     // 广告风扇状态 (PinA14)
+
 class GameFlowManager {
 private:
     // 环节状态结构体
@@ -325,6 +431,45 @@ private:
                 bool flashState;                       // 当前闪烁状态(true=亮, false=灭)
                 unsigned long lastFlashToggle;        // 上次闪烁切换时间
             } stage002;
+            
+            struct {  // 006_0环节状态
+                // 内部状态机
+                enum SubState {
+                    SUB_INIT,           // 初始化
+                    SUB_WAITING_INPUT,  // 等待输入
+                    SUB_CORRECT,        // 正确处理
+                    SUB_ERROR,          // 错误处理
+                    SUB_ERROR_WAIT,     // 错误等待
+                    SUB_SUCCESS         // 成功完成
+                } subState;
+                
+                // 游戏核心状态
+                int totalCount;                // 总计数器m
+                int correctCount;              // 正确计数器
+                int currentCorrectButton;      // 当前正确的按键(1-4)
+                int pressedButton;             // 玩家按下的按键(1-4)
+                bool buttonPressed;            // 是否有按键被按下
+                
+                // 呼吸效果状态
+                unsigned long breathStartTime; // 呼吸效果开始时间
+                bool breathActive;             // 呼吸效果是否激活
+                
+                // 语音控制状态
+                bool voiceTriggered;           // 语音是否已触发
+                unsigned long voiceTriggerTime;// 语音触发时间
+                int activeVoiceIO;             // 当前激活的语音IO(1-4)
+                
+                // 错误处理状态
+                unsigned long errorStartTime;  // 错误处理开始时间
+                int plantOffIndex;             // 植物灯熄灭索引(0-3)
+                unsigned long plantOffTime;    // 植物灯熄灭时间
+                
+                // 正确处理状态
+                unsigned long correctStartTime;// 正确处理开始时间
+                int plantOnIndex;              // 植物灯点亮索引(0-3)
+                unsigned long plantOnTime;     // 植物灯点亮时间
+                int plantLightOrder[4];        // 植物灯点亮顺序
+            } stage006;
         } state;
         
         // 构造函数
@@ -362,6 +507,7 @@ private:
     void updateStep001_1(int index);          // 更新001_1环节
     void updateStep001_2(int index);          // 更新001_2环节
     void updateStep002(int index);            // 更新002_0环节
+    void updateStep006(int index);            // 更新006_0环节
     
     // 工具方法
     String normalizeStageId(const String& stageId);  // 标准化环节ID格式

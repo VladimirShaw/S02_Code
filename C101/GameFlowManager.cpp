@@ -433,6 +433,114 @@ bool GameFlowManager::startStage(const String& stageId) {
         activeStageCount++;
         updateCompatibilityVars();
         return true;
+    } else if (normalizedId == "006_0") {
+        Serial.println(F("🎮 ===== 嘲讽按键游戏环节启动 ====="));
+        Serial.println(F("🎵 环节006_0：音频提示+按键匹配游戏"));
+        Serial.print(F("🎯 需要连续"));
+        Serial.print(STAGE_006_0_REQUIRED_CORRECT);
+        Serial.println(F("次正确才能通关"));
+        
+        // ========================== 应用006_0环节引脚状态配置 ==========================
+        Serial.println(F("🔧 应用006_0环节引脚状态配置..."));
+        
+        // 入口门系统
+        digitalWrite(C101_DOOR_LOCK_PIN, STAGE_006_0_DOOR_LOCK_STATE);
+        digitalWrite(C101_DOOR_LIGHT_PIN, STAGE_006_0_DOOR_LIGHT_STATE);
+        
+        // 氛围射灯系统
+        digitalWrite(C101_AMBIENT_LIGHT_PIN, STAGE_006_0_AMBIENT_LIGHT_STATE);
+        
+        // 嘲讽按键灯光系统 - 初始化为关闭，由呼吸效果控制
+        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_006_0_TAUNT_BUTTON1_STATE);
+        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_006_0_TAUNT_BUTTON2_STATE);
+        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_006_0_TAUNT_BUTTON3_STATE);
+        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_006_0_TAUNT_BUTTON4_STATE);
+        
+        // 画灯谜题系统
+        digitalWrite(C101_PAINTING_LIGHT_PINS[0], STAGE_006_0_PAINTING_LIGHT1_STATE);
+        digitalWrite(C101_PAINTING_LIGHT_PINS[1], STAGE_006_0_PAINTING_LIGHT2_STATE);
+        digitalWrite(C101_PAINTING_LIGHT_PINS[2], STAGE_006_0_PAINTING_LIGHT3_STATE);
+        digitalWrite(C101_PAINTING_LIGHT_PINS[3], STAGE_006_0_PAINTING_LIGHT4_STATE);
+        digitalWrite(C101_PAINTING_LIGHT_PINS[4], STAGE_006_0_PAINTING_LIGHT5_STATE);
+        digitalWrite(C101_PAINTING_LIGHT_PINS[5], STAGE_006_0_PAINTING_LIGHT6_STATE);
+        digitalWrite(C101_PAINTING_LIGHT_PINS[6], STAGE_006_0_PAINTING_LIGHT7_STATE);
+        digitalWrite(C101_PAINTING_LIGHT_PINS[7], STAGE_006_0_PAINTING_LIGHT8_STATE);
+        
+        // 提示灯带系统
+        digitalWrite(C101_HINT_LED_PINS[0], STAGE_006_0_HINT_LED1_STATE);
+        digitalWrite(C101_HINT_LED_PINS[1], STAGE_006_0_HINT_LED2_STATE);
+        
+        // 蝴蝶灯谜题系统
+        digitalWrite(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_006_0_BUTTERFLY_CARD_STATE);
+        digitalWrite(C101_BUTTERFLY_LIGHT_PIN, STAGE_006_0_BUTTERFLY_LIGHT_STATE);
+        digitalWrite(C101_AD_FAN_PIN, STAGE_006_0_AD_FAN_STATE);
+        
+        Serial.println(F("✅ 006_0环节引脚状态配置完成"));
+        
+        // ========================== 初始化嘲讽按键游戏状态 ==========================
+        Serial.println(F("🎮 初始化嘲讽按键游戏状态..."));
+        
+        // 初始化内部状态机
+        stages[slot].state.stage006.subState = StageState::SUB_INIT;
+        
+        // 游戏核心状态
+        stages[slot].state.stage006.totalCount = 0;           // 总计数器从0开始
+        stages[slot].state.stage006.correctCount = 0;         // 正确计数器
+        stages[slot].state.stage006.currentCorrectButton = 0; // 当前正确按键
+        stages[slot].state.stage006.pressedButton = 0;        // 按下的按键
+        stages[slot].state.stage006.buttonPressed = false;    // 按键状态
+        
+        // 呼吸效果状态
+        stages[slot].state.stage006.breathStartTime = 0;
+        stages[slot].state.stage006.breathActive = false;
+        
+        // 语音控制状态
+        stages[slot].state.stage006.voiceTriggered = false;
+        stages[slot].state.stage006.voiceTriggerTime = 0;
+        stages[slot].state.stage006.activeVoiceIO = 0;
+        
+        // 错误处理状态
+        stages[slot].state.stage006.errorStartTime = 0;
+        stages[slot].state.stage006.plantOffIndex = 0;
+        stages[slot].state.stage006.plantOffTime = 0;
+        
+        // 正确处理状态
+        stages[slot].state.stage006.correctStartTime = 0;
+        stages[slot].state.stage006.plantOnIndex = 0;
+        stages[slot].state.stage006.plantOnTime = 0;
+        
+        // 初始化植物灯顺序数组
+        for (int i = 0; i < 4; i++) {
+            stages[slot].state.stage006.plantLightOrder[i] = -1;
+        }
+        
+        // 初始化嘲讽按键输入引脚
+        for (int i = 0; i < 4; i++) {
+            pinMode(C101_TAUNT_BUTTON_PINS[i], INPUT_PULLUP);
+        }
+        Serial.println(F("🔘 嘲讽按键输入引脚初始化完成"));
+        
+        // 初始化语音IO输出引脚
+        pinMode(STAGE_006_0_VOICE_IO_1, OUTPUT);
+        pinMode(STAGE_006_0_VOICE_IO_2, OUTPUT);
+        pinMode(STAGE_006_0_VOICE_IO_3, OUTPUT);
+        pinMode(STAGE_006_0_VOICE_IO_4, OUTPUT);
+        digitalWrite(STAGE_006_0_VOICE_IO_1, HIGH);
+        digitalWrite(STAGE_006_0_VOICE_IO_2, HIGH);
+        digitalWrite(STAGE_006_0_VOICE_IO_3, HIGH);
+        digitalWrite(STAGE_006_0_VOICE_IO_4, HIGH);
+        Serial.println(F("🔊 语音IO输出引脚初始化完成"));
+        
+        Serial.println(F("🌟 嘲讽按键呼吸效果："));
+        Serial.println(F("   10秒循环：0-1500ms亮，1500-3000ms灭，5000-6500ms亮，6500-8000ms灭"));
+        
+        Serial.println(F("🎵 语音轮播系统："));
+        Serial.println(F("   m%4映射：0→IO1, 1→IO3, 2→IO2, 3→IO4"));
+        
+        Serial.println(F("⏳ 等待游戏开始..."));
+        activeStageCount++;
+        updateCompatibilityVars();
+        return true;
     } else {
         Serial.print(F("❌ 未定义的C101环节: "));
         Serial.println(normalizedId);
@@ -609,7 +717,8 @@ bool GameFlowManager::isValidStageId(const String& stageId) {
     return (normalizedId == "000_0" || 
             normalizedId == "001_1" ||
             normalizedId == "001_2" || 
-            normalizedId == "002_0");
+            normalizedId == "002_0" ||
+            normalizedId == "006_0");
 }
 
 void GameFlowManager::printAvailableStages() {
@@ -626,6 +735,10 @@ void GameFlowManager::printAvailableStages() {
     Serial.print(F("002_0 - 画灯谜题复杂效果：呼吸效果+闪烁效果并行，30秒触发多环节跳转("));
     Serial.print(STAGE_002_0_DURATION/1000);
     Serial.println(F("秒后完成)"));
+    
+    Serial.print(F("006_0 - 嘲讽按键游戏：音频提示+按键匹配，需要连续"));
+    Serial.print(STAGE_006_0_REQUIRED_CORRECT);
+    Serial.println(F("次正确才能通关"));
     
     Serial.println(F("=============================="));
 }
@@ -659,6 +772,8 @@ void GameFlowManager::update() {
                 updateStep001_2(i);
             } else if (stageId == "002_0") {
                 updateStep002(i);
+            } else if (stageId == "006_0") {
+                updateStep006(i);
             }
         }
     }
@@ -1289,4 +1404,340 @@ void GameFlowManager::resetAllVolumes() {
         delay(50); // 避免命令发送过快
     }
     Serial.println(F("✅ 所有通道音量重置完成"));
+}
+
+// ========================== 006_0环节：嘲讽按键游戏 ==========================
+void GameFlowManager::updateStep006(int index) {
+    if (index < 0 || index >= MAX_PARALLEL_STAGES || !stages[index].running) {
+        return;
+    }
+    
+    unsigned long elapsed = millis() - stages[index].startTime;
+    StageState& stage = stages[index];
+    
+    // 检查全局停止标志
+    if (globalStopped) {
+        return;
+    }
+    
+    // 使用内部状态机管理游戏流程
+    switch (stage.state.stage006.subState) {
+        case StageState::SUB_INIT:
+            // ========================== 初始化阶段 ==========================
+            // 开始嘲讽按键呼吸效果
+            if (!stage.state.stage006.breathActive) {
+                stage.state.stage006.breathActive = true;
+                stage.state.stage006.breathStartTime = elapsed;
+                
+                // 启动4个嘲讽按键的呼吸效果
+                for (int i = 0; i < 4; i++) {
+                    MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0); // 3秒呼吸周期
+                }
+                Serial.println(F("🌟 嘲讽按键呼吸效果启动"));
+            }
+            
+            // 触发第一个语音播放
+            if (!stage.state.stage006.voiceTriggered) {
+                stage.state.stage006.totalCount = 1;  // m从1开始
+                int voiceIndex = stage.state.stage006.totalCount % 4;  // 1%4=1
+                stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
+                                                           (voiceIndex == 1) ? 3 : 
+                                                           (voiceIndex == 2) ? 2 : 4;
+                
+                // 触发对应的语音IO
+                int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
+                               (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
+                               (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
+                                                   STAGE_006_0_VOICE_IO_4;
+                
+                digitalWrite(voicePin, LOW);
+                stage.state.stage006.voiceTriggered = true;
+                stage.state.stage006.voiceTriggerTime = millis();
+                stage.state.stage006.activeVoiceIO = voiceIndex + 1;
+                
+                Serial.print(F("🎵 触发语音IO"));
+                Serial.print(stage.state.stage006.activeVoiceIO);
+                Serial.print(F(" (m="));
+                Serial.print(stage.state.stage006.totalCount);
+                Serial.print(F(", m%4="));
+                Serial.print(voiceIndex);
+                Serial.print(F(", 正确按键="));
+                Serial.print(stage.state.stage006.currentCorrectButton);
+                Serial.println(F(")"));
+                
+                // 切换到等待输入状态
+                stage.state.stage006.subState = StageState::SUB_WAITING_INPUT;
+            }
+            break;
+            
+        case StageState::SUB_WAITING_INPUT:
+            // ========================== 等待玩家输入 ==========================
+            // 维持嘲讽按键呼吸效果（10秒循环）
+            if (stage.state.stage006.breathActive) {
+                unsigned long breathElapsed = elapsed - stage.state.stage006.breathStartTime;
+                unsigned long cycleTime = breathElapsed % STAGE_006_0_BREATH_CYCLE;
+                
+                // 根据时间表控制呼吸效果
+                for (int i = 0; i < 4; i++) {
+                    bool shouldBreathe = false;
+                    
+                    // 检查当前时间是否在呼吸时间段内
+                    if ((cycleTime >= STAGE_006_0_TAUNT1_BREATH_1_START && 
+                         cycleTime < STAGE_006_0_TAUNT1_BREATH_1_START + STAGE_006_0_TAUNT1_BREATH_1_DUR) ||
+                        (cycleTime >= STAGE_006_0_TAUNT1_BREATH_3_START && 
+                         cycleTime < STAGE_006_0_TAUNT1_BREATH_3_START + STAGE_006_0_TAUNT1_BREATH_3_DUR)) {
+                        shouldBreathe = true;
+                    }
+                    
+                    // 更新呼吸状态（简化处理，所有按键同步）
+                    if (shouldBreathe) {
+                        MillisPWM::setBrightness(C101_TAUNT_BUTTON_LIGHT_PINS[i], 255);
+                    } else {
+                        MillisPWM::setBrightness(C101_TAUNT_BUTTON_LIGHT_PINS[i], 0);
+                    }
+                }
+            }
+            
+            // 恢复语音IO为高电平（1秒后）
+            if (stage.state.stage006.voiceTriggered && 
+                millis() - stage.state.stage006.voiceTriggerTime >= STAGE_006_0_VOICE_TRIGGER_LOW_TIME) {
+                int voicePin = (stage.state.stage006.activeVoiceIO == 1) ? STAGE_006_0_VOICE_IO_1 :
+                               (stage.state.stage006.activeVoiceIO == 2) ? STAGE_006_0_VOICE_IO_2 :
+                               (stage.state.stage006.activeVoiceIO == 3) ? STAGE_006_0_VOICE_IO_3 : 
+                                                                           STAGE_006_0_VOICE_IO_4;
+                digitalWrite(voicePin, HIGH);
+                stage.state.stage006.voiceTriggered = false;
+            }
+            
+            // 检测按键输入
+            if (!stage.state.stage006.buttonPressed) {
+                for (int i = 0; i < 4; i++) {
+                    if (digitalRead(C101_TAUNT_BUTTON_COM_PINS[i]) == LOW) {
+                        stage.state.stage006.buttonPressed = true;
+                        stage.state.stage006.pressedButton = i + 1;
+                        
+                        Serial.print(F("🔘 检测到按键"));
+                        Serial.print(stage.state.stage006.pressedButton);
+                        Serial.println(F("被按下"));
+                        
+                        // 停止所有呼吸效果
+                        for (int j = 0; j < 4; j++) {
+                            MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[j]);
+                            if (j == i) {
+                                // 被按下的按键保持亮起
+                                digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[j], HIGH);
+                            } else {
+                                // 其他按键熄灭
+                                digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[j], LOW);
+                            }
+                        }
+                        stage.state.stage006.breathActive = false;
+                        
+                        // 发送服务器跳转指令
+                        stage.state.stage006.totalCount++; // m+1
+                        int jumpIndex = stage.state.stage006.totalCount % 4;
+                        String jumpResult = (jumpIndex == 0) ? STAGE_006_0_JUMP_MOD_0 :
+                                           (jumpIndex == 1) ? STAGE_006_0_JUMP_MOD_1 :
+                                           (jumpIndex == 2) ? STAGE_006_0_JUMP_MOD_2 : 
+                                                              STAGE_006_0_JUMP_MOD_3;
+                        
+                        Serial.print(F("📤 发送流程跳转: "));
+                        Serial.print(jumpResult);
+                        Serial.print(F(" (m="));
+                        Serial.print(stage.state.stage006.totalCount);
+                        Serial.print(F(", m%4="));
+                        Serial.print(jumpIndex);
+                        Serial.println(F(")"));
+                        
+                        requestStageJump(jumpResult);
+                        
+                        // 判断正确或错误
+                        if (stage.state.stage006.pressedButton == stage.state.stage006.currentCorrectButton) {
+                            Serial.println(F("✅ 按键正确！"));
+                            stage.state.stage006.correctCount++;
+                            stage.state.stage006.subState = StageState::SUB_CORRECT;
+                            stage.state.stage006.correctStartTime = millis();
+                        } else {
+                            Serial.println(F("❌ 按键错误！"));
+                            stage.state.stage006.correctCount = 0;  // 重置正确计数
+                            stage.state.stage006.subState = StageState::SUB_ERROR;
+                            stage.state.stage006.errorStartTime = millis();
+                            
+                            // 发送错误跳转
+                            int errorGroup = ((stage.state.stage006.totalCount - 1) / 2) % 3;
+                            String errorJump = (errorGroup == 0) ? STAGE_006_0_ERROR_JUMP_1 :
+                                              (errorGroup == 1) ? STAGE_006_0_ERROR_JUMP_2 : 
+                                                                  STAGE_006_0_ERROR_JUMP_3;
+                            Serial.print(F("📤 发送错误跳转: "));
+                            Serial.println(errorJump);
+                            requestStageJump(errorJump);
+                        }
+                        
+                        break;  // 只处理第一个按下的按键
+                    }
+                }
+            }
+            break;
+            
+        case StageState::SUB_CORRECT:
+            // ========================== 正确处理 ==========================
+            {
+                unsigned long correctElapsed = millis() - stage.state.stage006.correctStartTime;
+                
+                // 植物灯依次点亮
+                int lightIndex = correctElapsed / STAGE_006_0_PLANT_ON_DELAY;
+                if (lightIndex != stage.state.stage006.plantOnIndex && lightIndex < stage.state.stage006.correctCount) {
+                    stage.state.stage006.plantOnIndex = lightIndex;
+                    
+                    // 确定要点亮的植物灯（根据按键顺序）
+                    int plantLight = stage.state.stage006.plantLightOrder[lightIndex];
+                    if (plantLight < 0) {
+                        // 记录这次点亮的植物灯
+                        plantLight = stage.state.stage006.currentCorrectButton - 1;
+                        stage.state.stage006.plantLightOrder[lightIndex] = plantLight;
+                    }
+                    
+                    // 启动植物灯呼吸效果
+                    MillisPWM::startBreathing(C101_PLANT_LIGHT_PINS[plantLight], 
+                                              STAGE_006_0_PLANT_BREATH_DURATION / 1000.0);
+                    Serial.print(F("🌱 植物灯"));
+                    Serial.print(plantLight + 1);
+                    Serial.println(F("开始呼吸"));
+                }
+                
+                // 检查是否达到成功条件
+                if (stage.state.stage006.correctCount >= STAGE_006_0_REQUIRED_CORRECT) {
+                    Serial.println(F("🎉 游戏成功！跳转到下一关"));
+                    notifyStageComplete("006_0", STAGE_006_0_SUCCESS_JUMP, elapsed);
+                    stage.state.stage006.subState = StageState::SUB_SUCCESS;
+                } else if (correctElapsed >= 1000) {  // 1秒后继续下一轮
+                    // 重新开始等待输入
+                    stage.state.stage006.buttonPressed = false;
+                    stage.state.stage006.breathActive = true;
+                    stage.state.stage006.breathStartTime = elapsed;
+                    
+                    // 恢复呼吸效果
+                    for (int i = 0; i < 4; i++) {
+                        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
+                        MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0);
+                    }
+                    
+                    // 触发下一个语音
+                    int voiceIndex = stage.state.stage006.totalCount % 4;
+                    stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
+                                                               (voiceIndex == 1) ? 3 : 
+                                                               (voiceIndex == 2) ? 2 : 4;
+                    
+                    int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
+                                   (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
+                                   (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
+                                                       STAGE_006_0_VOICE_IO_4;
+                    
+                    digitalWrite(voicePin, LOW);
+                    stage.state.stage006.voiceTriggered = true;
+                    stage.state.stage006.voiceTriggerTime = millis();
+                    stage.state.stage006.activeVoiceIO = voiceIndex + 1;
+                    
+                    Serial.print(F("🎵 触发下一个语音IO"));
+                    Serial.print(stage.state.stage006.activeVoiceIO);
+                    Serial.print(F(" (正确数: "));
+                    Serial.print(stage.state.stage006.correctCount);
+                    Serial.print(F("/"));
+                    Serial.print(STAGE_006_0_REQUIRED_CORRECT);
+                    Serial.println(F(")"));
+                    
+                    stage.state.stage006.subState = StageState::SUB_WAITING_INPUT;
+                }
+            }
+            break;
+            
+        case StageState::SUB_ERROR:
+            // ========================== 错误处理 ==========================
+            {
+                unsigned long errorElapsed = millis() - stage.state.stage006.errorStartTime;
+                
+                // 植物灯依次熄灭
+                int offIndex = errorElapsed / STAGE_006_0_PLANT_OFF_DELAY;
+                if (offIndex != stage.state.stage006.plantOffIndex && offIndex < 4) {
+                    stage.state.stage006.plantOffIndex = offIndex;
+                    
+                    // 停止呼吸并熄灭
+                    MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[offIndex]);
+                    digitalWrite(C101_PLANT_LIGHT_PINS[offIndex], LOW);
+                    
+                    Serial.print(F("🌱 植物灯"));
+                    Serial.print(offIndex + 1);
+                    Serial.println(F("熄灭"));
+                }
+                
+                // 被按下的错误按键也要熄灭（在1125ms时）
+                if (errorElapsed >= 1125 && stage.state.stage006.pressedButton > 0) {
+                    int buttonIndex = stage.state.stage006.pressedButton - 1;
+                    digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[buttonIndex], LOW);
+                    stage.state.stage006.pressedButton = 0;  // 标记已处理
+                }
+                
+                // 进入等待状态
+                if (errorElapsed >= 1125) {
+                    stage.state.stage006.subState = StageState::SUB_ERROR_WAIT;
+                    stage.state.stage006.errorStartTime = millis();  // 重置为等待开始时间
+                    
+                    // 重置植物灯顺序记录
+                    for (int i = 0; i < 4; i++) {
+                        stage.state.stage006.plantLightOrder[i] = -1;
+                    }
+                }
+            }
+            break;
+            
+        case StageState::SUB_ERROR_WAIT:
+            // ========================== 错误后等待 ==========================
+            {
+                unsigned long waitElapsed = millis() - stage.state.stage006.errorStartTime;
+                
+                if (waitElapsed >= STAGE_006_0_ERROR_WAIT_TIME) {
+                    // 重新开始游戏
+                    Serial.println(F("🔄 错误处理完成，重新开始"));
+                    
+                    stage.state.stage006.buttonPressed = false;
+                    stage.state.stage006.breathActive = true;
+                    stage.state.stage006.breathStartTime = elapsed;
+                    stage.state.stage006.plantOnIndex = 0;
+                    stage.state.stage006.plantOffIndex = 0;
+                    
+                    // 恢复呼吸效果
+                    for (int i = 0; i < 4; i++) {
+                        MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0);
+                    }
+                    
+                    // 触发下一个语音（使用递增后的m值）
+                    int voiceIndex = stage.state.stage006.totalCount % 4;
+                    stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
+                                                               (voiceIndex == 1) ? 3 : 
+                                                               (voiceIndex == 2) ? 2 : 4;
+                    
+                    int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
+                                   (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
+                                   (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
+                                                       STAGE_006_0_VOICE_IO_4;
+                    
+                    digitalWrite(voicePin, LOW);
+                    stage.state.stage006.voiceTriggered = true;
+                    stage.state.stage006.voiceTriggerTime = millis();
+                    stage.state.stage006.activeVoiceIO = voiceIndex + 1;
+                    
+                    Serial.print(F("🎵 重新触发语音IO"));
+                    Serial.print(stage.state.stage006.activeVoiceIO);
+                    Serial.println(F(" (错误后重试)"));
+                    
+                    stage.state.stage006.subState = StageState::SUB_WAITING_INPUT;
+                }
+            }
+            break;
+            
+        case StageState::SUB_SUCCESS:
+            // ========================== 成功完成 ==========================
+            // 保持当前状态，等待服务器处理
+            break;
+    }
 }
