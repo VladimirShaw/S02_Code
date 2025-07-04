@@ -5,6 +5,8 @@
 
 // 外部全局实例
 extern UniversalHarbingerClient harbingerClient;
+extern GameFlowManager gameFlowManager;
+extern GameStageStateMachine gameStageManager;
 
 // 全局实例
 GameProtocolHandler gameProtocolHandler;
@@ -111,10 +113,16 @@ void GameProtocolHandler::handleStart(const String& params) {
         gameStageManager.setStage(stage);
     }
     
-    // 🎯 C102在START命令时只记录sessionID，不做其他操作
-    Serial.print(F("✅ C102已记录游戏会话ID: "));
-    Serial.println(sessionId);
-    Serial.println(F("🎮 C102等待后续游戏环节指令"));
+    // 🎯 START命令处理完成后，先停止当前环节，再启动001_1环节（游戏开始环节，C101专用）
+    Serial.println(F("🛑 停止当前环节，准备启动001_1环节..."));
+    gameFlowManager.stopStage("000_0");  // 明确停止000_0环节
+    
+    Serial.println(F("🚀 START命令完成，自动启动001_1环节..."));
+    if (gameFlowManager.startStage("001_1")) {
+        Serial.println(F("✅ 001_1环节自动启动成功"));
+    } else {
+        Serial.println(F("❌ 001_1环节自动启动失败"));
+    }
     
     // 发送GAME响应
     String result = "result=success,session_id=" + sessionId + ",level=" + level + ",mode=" + mode;

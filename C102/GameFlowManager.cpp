@@ -128,13 +128,25 @@ bool GameFlowManager::startStage(const String& stageId) {
     
     // 根据环节ID执行对应逻辑
     if (normalizedId == "000_0") {
-        Serial.print(F("🎵 环节000_0：通道"));
+        Serial.println(F("🎵 环节000_0：通道"));
         Serial.print(STAGE_000_0_CHANNEL);
-        Serial.print(F("循环播放"));
-        Serial.print(STAGE_000_0_SONG_ID);
-        Serial.print(F("号音频("));
-        Serial.print(STAGE_000_0_START);
-        Serial.println(F("ms启动)"));
+        Serial.println(F("号音频(初始化环节，不自动跳转)"));
+        
+        // ========================== 应用000_0环节引脚状态配置 ==========================
+        Serial.println(F("🔧 应用C102的000_0环节引脚状态配置..."));
+        
+        // 注意：C102主要负责音频控制，以下配置根据实际硬件连接情况调整
+        // 如果C102有数字IO引脚需要控制，可以在这里添加具体的digitalWrite调用
+        
+        // 示例：如果有状态指示LED
+        // digitalWrite(STATUS_LED1_PIN, STAGE_000_0_STATUS_LED1_STATE);
+        // digitalWrite(STATUS_LED2_PIN, STAGE_000_0_STATUS_LED2_STATE);
+        
+        // 示例：如果有继电器控制
+        // digitalWrite(RELAY1_PIN, STAGE_000_0_RELAY1_STATE);
+        // digitalWrite(RELAY2_PIN, STAGE_000_0_RELAY2_STATE);
+        
+        Serial.println(F("✅ C102的000_0环节引脚状态配置完成"));
         
         // 初始化环节特定状态
         stages[slot].state.stage000.channelStarted = false;
@@ -384,9 +396,7 @@ void GameFlowManager::printAvailableStages() {
     Serial.print(STAGE_000_0_CHANNEL);
     Serial.print(F("循环播放"));
     Serial.print(STAGE_000_0_SONG_ID);
-    Serial.print(F("号音频("));
-    Serial.print(STAGE_000_0_COMPLETE_TIME);
-    Serial.println(F("ms后完成)"));
+    Serial.println(F("号音频(初始化环节，不自动跳转)"));
     
     Serial.print(F("001_2 - 通道"));
     Serial.print(STAGE_001_2_CHANNEL);
@@ -593,15 +603,8 @@ void GameFlowManager::updateStep000(int index) {
         Serial.println(STAGE_000_0_SONG_ID);
     }
     
-    // 1000ms后跳转到下一环节
-    if (!stage.jumpRequested && elapsed >= STAGE_000_0_COMPLETE_TIME) {
-        Serial.print(F("⏰ [槽位"));
-        Serial.print(index);
-        Serial.print(F("] 环节000_0完成，跳转到"));
-        Serial.println(STAGE_000_0_NEXT_STAGE);
-        notifyStageComplete("000_0", STAGE_000_0_NEXT_STAGE, elapsed);
-        // 继续音频循环，等待服务器下一步指令
-    }
+    // 000_0环节作为初始化环节，不自动跳转，等待服务器指令
+    // 继续音频循环播放，直到收到其他命令
     
     // 持续检查音频状态，如果停止了就重新播放（只在播放稳定期后开始检测）
     if (stage.state.stage000.channelStarted && elapsed >= STAGE_000_0_STABLE_TIME) {

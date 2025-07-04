@@ -30,14 +30,32 @@
 // 所有音频控制的时间点都在这里定义，方便查看和修改
 //
 
-// 000_0 环节：第一路音频循环播放201号音频
+// 000_0 环节：第一路音频循环播放201号音频（初始化环节，不自动跳转）
 #define STAGE_000_0_CHANNEL         2        // 播放通道
 #define STAGE_000_0_SONG_ID         201      // 播放歌曲ID
 #define STAGE_000_0_START           0        // 启动时间(ms)
 #define STAGE_000_0_STABLE_TIME     1000     // 播放稳定期(ms) - 开始播放后等待时间
 #define STAGE_000_0_CHECK_INTERVAL  500      // 音频检查间隔(ms)
-#define STAGE_000_0_COMPLETE_TIME   1000     // 1000ms后报告完成
-#define STAGE_000_0_NEXT_STAGE      "001_1"  // 跳转目标环节
+
+// ========================== 000_0环节引脚状态配置 ==========================
+// C102主要负责音频控制，数字IO引脚较少，主要用于状态指示
+// 根据实际硬件连接情况配置以下引脚状态
+
+// 状态指示LED (如果有的话)
+#define STAGE_000_0_STATUS_LED1_STATE       LOW     // 状态LED1 (根据实际引脚配置)
+#define STAGE_000_0_STATUS_LED2_STATE       LOW     // 状态LED2 (根据实际引脚配置)
+#define STAGE_000_0_STATUS_LED3_STATE       LOW     // 状态LED3 (根据实际引脚配置)
+
+// 继电器控制 (如果有的话)
+#define STAGE_000_0_RELAY1_STATE            LOW     // 继电器1状态 (根据实际引脚配置)
+#define STAGE_000_0_RELAY2_STATE            LOW     // 继电器2状态 (根据实际引脚配置)
+
+// 辅助输出 (如果有的话)
+#define STAGE_000_0_AUX_OUTPUT1_STATE       LOW     // 辅助输出1状态 (根据实际引脚配置)
+#define STAGE_000_0_AUX_OUTPUT2_STATE       LOW     // 辅助输出2状态 (根据实际引脚配置)
+
+// 注意：具体引脚号需要根据C102的实际硬件配置文件来定义
+// 注意：000_0环节作为初始化环节，不设置自动完成时间，等待服务器指令
 
 // 001_2 环节：第1路播放0001，第2路3秒内音量从30减到0
 #define STAGE_001_2_CHANNEL         1        // 播放通道
@@ -59,7 +77,7 @@
 #define STAGE_002_0_SONG_ID2        203      // 第2播放歌曲ID
 #define STAGE_002_0_CHANNEL2_START  0        // 第2通道启动时间(ms)
 #define STAGE_002_0_MULTI_JUMP_TIME 30000    // 30秒时触发多环节跳转
-#define STAGE_002_0_MULTI_JUMP_STAGES "006_0,007_0,009_0,010_0"  // 多环节跳转目标
+#define STAGE_002_0_MULTI_JUMP_STAGES "005_0,006_0"  // 多环节跳转目标
 #define STAGE_002_0_DURATION        60000    // 60秒默认时长（可根据实际音频长度调整）
 #define STAGE_002_0_NEXT_STAGE      ""       // 跳转目标环节（空字符串表示只报告完成，不跳转）
 
