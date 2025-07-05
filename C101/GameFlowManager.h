@@ -506,46 +506,34 @@ private:
                     SUB_SUCCESS         // 成功完成
                 } subState;
                 
-                // 游戏核心状态
+                // 游戏核心状态 (必要)
                 int totalCount;                // 总计数器m
                 int correctCount;              // 正确计数器
                 int currentCorrectButton;      // 当前正确的按键(1-4)
                 int pressedButton;             // 玩家按下的按键(1-4)
                 bool buttonPressed;            // 是否有按键被按下
                 
-                // 呼吸效果状态
-                unsigned long breathStartTime; // 呼吸效果开始时间
-                bool breathActive;             // 呼吸效果是否激活
-                
-                // 语音控制状态
+                // 语音控制状态 (必要)
                 bool voiceTriggered;           // 语音是否已触发
-                unsigned long voiceTriggerTime;// 语音触发时间
-                int activeVoiceIO;             // 当前激活的语音IO(1-4)
-                bool voicePlayedOnce;          // 是否已播放过一次（单次模式用）
-                unsigned long lastVoiceTime;   // 上次语音播放时间（循环模式用）
+                unsigned long voiceTriggerTime; // 语音触发时间
+                bool voicePlayedOnce;          // 语音是否已播放过一次
+                unsigned long lastVoiceTime;   // 上次语音播放时间
                 
-                // 按键防抖状态
-                bool buttonDebouncing;         // 是否正在防抖中
-                int debouncingButton;          // 正在防抖的按键(0-3)
+                // 按键防抖状态 (必要)
+                bool buttonDebouncing;         // 是否正在防抖
+                int debouncingButton;          // 正在防抖的按键索引(0-3)
                 unsigned long debounceStartTime; // 防抖开始时间
-                bool lastButtonStates[4];      // 上次按键状态记录
+                int lastButtonStates[4];       // 上次按键状态记录
                 
-                // 错误处理状态
+                // 时序控制状态 (必要)
                 unsigned long errorStartTime;  // 错误处理开始时间
-                int plantOffIndex;             // 植物灯熄灭索引(0-3)
-                unsigned long plantOffTime;    // 植物灯熄灭时间
+                unsigned long correctStartTime; // 正确处理开始时间
                 
-                // 正确处理状态
-                unsigned long correctStartTime;// 正确处理开始时间
-                int plantOnIndex;              // 植物灯点亮索引(0-3)
-                unsigned long plantOnTime;     // 植物灯点亮时间
-                int plantLightOrder[4];        // 植物灯点亮顺序
-                bool plantLightStates[4];      // 植物灯状态(true=已点亮, false=未点亮)
-                
-                // 植物灯时序呼吸效果状态
+                // 植物灯状态 (必要)
+                bool plantLightStates[4];      // 植物灯状态记录
                 bool plantBreathActive;        // 植物灯时序呼吸是否激活
                 unsigned long plantBreathStartTime; // 植物灯时序呼吸开始时间
-                int plantBreathIndex;          // 当前检查的植物灯索引(0-3)
+                int plantBreathIndex;          // 植物灯时序呼吸索引
             } stage006;
         } state;
         

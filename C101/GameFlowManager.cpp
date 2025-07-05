@@ -191,57 +191,71 @@ GameFlowManager::GameFlowManager() {
 }
 
 bool GameFlowManager::begin() {
-    Serial.println(F("=== C101游戏流程管理器初始化 ==="));
+    Serial.println(F("🎮 GameFlowManager初始化开始"));
     
-    // 注册语音IO引脚到统一引脚管理器
-    Serial.println(F("🔧 注册语音IO引脚到统一管理器..."));
-    pinManager.registerPin(STAGE_006_0_VOICE_IO_1, HIGH);
-    pinManager.registerPin(STAGE_006_0_VOICE_IO_2, HIGH);
-    pinManager.registerPin(STAGE_006_0_VOICE_IO_3, HIGH);
-    pinManager.registerPin(STAGE_006_0_VOICE_IO_4, HIGH);
+    // 初始化所有环节状态
+    for (int i = 0; i < MAX_PARALLEL_STAGES; i++) {
+        stages[i].running = false;
+        stages[i].stageId = "";
+        stages[i].startTime = 0;
+        stages[i].jumpRequested = false;
+        memset(&stages[i].state, 0, sizeof(stages[i].state));
+    }
     
-    // 注册所有画灯引脚
-    Serial.println(F("🔧 注册画灯引脚到统一管理器..."));
+    activeStageCount = 0;
+    globalStopped = false;
+    
+    // 初始化兼容旧接口的变量
+    currentStageId = "";
+    stageStartTime = 0;
+    stageRunning = false;
+    jumpRequested = false;
+    
+    // 初始化紧急开门功能
+    emergencyUnlockStartTime = 0;
+    emergencyUnlockActive = false;
+    
+    // 初始化引脚管理器
+    Serial.println(F("🔧 初始化统一引脚管理器..."));
+    
+    // 注册需要管理的引脚
+    // 语音IO引脚
+    for (int i = 0; i < C101_AUDIO_MODULE_COUNT; i++) {
+        pinManager.registerPin(C101_AUDIO_IO1_PINS[i], HIGH);
+        pinManager.registerPin(C101_AUDIO_IO2_PINS[i], HIGH);
+    }
+    
+    // 画灯引脚
     for (int i = 0; i < C101_PAINTING_LIGHT_COUNT; i++) {
         pinManager.registerPin(C101_PAINTING_LIGHT_PINS[i], LOW);
     }
     
-    // 注册所有按键灯引脚
-    Serial.println(F("🔧 注册按键灯引脚到统一管理器..."));
+    // 按键灯引脚
     for (int i = 0; i < C101_TAUNT_BUTTON_COUNT; i++) {
         pinManager.registerPin(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
     }
     
-    // 注册所有植物灯引脚
-    Serial.println(F("🔧 注册植物灯引脚到统一管理器..."));
+    // 植物灯引脚
     for (int i = 0; i < C101_PLANT_LIGHT_COUNT; i++) {
         pinManager.registerPin(C101_PLANT_LIGHT_PINS[i], LOW);
     }
     
-    // 注册其他重要引脚
-    Serial.println(F("🔧 注册其他控制引脚到统一管理器..."));
+    // 其他控制引脚
     pinManager.registerPin(C101_DOOR_LOCK_PIN, HIGH);
     pinManager.registerPin(C101_DOOR_LIGHT_PIN, LOW);
     pinManager.registerPin(C101_AMBIENT_LIGHT_PIN, LOW);
-    for (int i = 0; i < C101_HINT_LED_COUNT; i++) {
-        pinManager.registerPin(C101_HINT_LED_PINS[i], LOW);
-    }
+    pinManager.registerPin(C101_HINT_LED_PINS[0], LOW);
+    pinManager.registerPin(C101_HINT_LED_PINS[1], LOW);
     pinManager.registerPin(C101_BUTTERFLY_CARD_RELAY_PIN, LOW);
-    pinManager.registerPin(C101_BUTTERFLY_LIGHT_PIN, LOW);
+    pinManager.registerPin(C101_BUTTERFLY_LIGHT_PIN, HIGH);
     pinManager.registerPin(C101_AD_FAN_PIN, LOW);
     
-    Serial.println(F("✅ 所有引脚注册完成"));
+    Serial.println(F("✅ 统一引脚管理器初始化完成"));
     
-    // 初始化统一语音控制器
-    if (!voice.begin()) {
-        Serial.println(F("❌ 语音控制器初始化失败"));
-        return false;
-    }
+    // 打印PWM通道状态
+    MillisPWM::printChannelStatus();
     
-    // 初始化所有通道音量
-    initializeAllVolumes();
-    
-    Serial.println(F("✅ C101游戏流程管理器初始化完成"));
+    Serial.println(F("✅ GameFlowManager初始化完成"));
     return true;
 }
 
@@ -675,29 +689,20 @@ bool GameFlowManager::startStage(const String& stageId) {
         stages[slot].state.stage006.pressedButton = 0;        // 按下的按键
         stages[slot].state.stage006.buttonPressed = false;    // 按键状态
         
-        // 呼吸效果状态
-        stages[slot].state.stage006.breathStartTime = 0;
-        stages[slot].state.stage006.breathActive = false;
-        
         // 语音控制状态
         stages[slot].state.stage006.voiceTriggered = false;
         stages[slot].state.stage006.voiceTriggerTime = 0;
-        stages[slot].state.stage006.activeVoiceIO = 0;
+        stages[slot].state.stage006.voicePlayedOnce = false;
+        stages[slot].state.stage006.lastVoiceTime = 0;
         
-        // 错误处理状态
+        // 按键防抖状态
+        stages[slot].state.stage006.buttonDebouncing = false;
+        stages[slot].state.stage006.debouncingButton = -1;
+        stages[slot].state.stage006.debounceStartTime = 0;
+        
+        // 时序控制状态
         stages[slot].state.stage006.errorStartTime = 0;
-        stages[slot].state.stage006.plantOffIndex = 0;
-        stages[slot].state.stage006.plantOffTime = 0;
-        
-        // 正确处理状态
         stages[slot].state.stage006.correctStartTime = 0;
-        stages[slot].state.stage006.plantOnIndex = 0;
-        stages[slot].state.stage006.plantOnTime = 0;
-        
-        // 初始化植物灯顺序数组
-        for (int i = 0; i < 4; i++) {
-            stages[slot].state.stage006.plantLightOrder[i] = -1;
-        }
         
         // 初始化植物灯状态记录
         for (int i = 0; i < 4; i++) {
@@ -865,27 +870,36 @@ void GameFlowManager::stopAllStages() {
     Serial.println(F("💡 所有按键灯效果已停止"));
     
     // 停止所有音频播放（006_0环节相关）
-    pinManager.setPinState(STAGE_006_0_VOICE_IO_1, HIGH);
-    pinManager.setPinState(STAGE_006_0_VOICE_IO_2, HIGH);
-    pinManager.setPinState(STAGE_006_0_VOICE_IO_3, HIGH);
-    pinManager.setPinState(STAGE_006_0_VOICE_IO_4, HIGH);
+    for (int i = 0; i < C101_AUDIO_MODULE_COUNT; i++) {
+        pinManager.setPinState(C101_AUDIO_IO1_PINS[i], HIGH);
+        pinManager.setPinState(C101_AUDIO_IO2_PINS[i], HIGH);
+    }
     Serial.println(F("🎵 所有音频播放已停止"));
     
-    // 重置所有环节状态
+    // 停止所有环节
     for (int i = 0; i < MAX_PARALLEL_STAGES; i++) {
         if (stages[i].running) {
             Serial.print(F("⏹️ 停止环节[槽位"));
             Serial.print(i);
             Serial.print(F("]: "));
             Serial.println(stages[i].stageId);
+            
+            stages[i].running = false;
+            stages[i].stageId = "";
+            stages[i].jumpRequested = false;
         }
-        stages[i].running = false;
-        stages[i].stageId = "";
     }
+    
     activeStageCount = 0;
     updateCompatibilityVars();
     
-    Serial.println(F("✅ 所有C101环节已停止"));
+    // 🔧 新增：压缩PWM通道，释放资源
+    Serial.println(F("🔧 清理PWM通道资源..."));
+    MillisPWM::stopAll();         // 停止所有PWM
+    MillisPWM::compactChannels(); // 压缩通道数组
+    MillisPWM::printChannelStatus(); // 打印最终状态
+    
+    Serial.println(F("✅ 所有环节已停止，资源已释放"));
 }
 
 // ========================== 状态查询 ==========================
@@ -1677,7 +1691,6 @@ void GameFlowManager::updateStep006(int index) {
         pinManager.setPinTemporaryState(voicePin, LOW, STAGE_006_0_VOICE_TRIGGER_LOW_TIME, HIGH);
         stage.state.stage006.voiceTriggered = true;
         stage.state.stage006.voiceTriggerTime = millis();
-        stage.state.stage006.activeVoiceIO = voiceIndex + 1;
         stage.state.stage006.voicePlayedOnce = false;
         stage.state.stage006.lastVoiceTime = millis();
         
@@ -1850,12 +1863,6 @@ void GameFlowManager::updateStep006(int index) {
     } else if (stage.state.stage006.subState == 2) {
         // ========================== STEP_3_PROCESS_CORRECT: 处理正确按键 ==========================
         
-        static bool step3Entered = false;
-        if (!step3Entered) {
-            Serial.println(F("🌱 进入STEP_3_PROCESS_CORRECT - 正确按键处理完成"));
-            step3Entered = true;
-        }
-        
         unsigned long correctElapsed = millis() - stage.state.stage006.correctStartTime;
         
         // 检查是否达到成功条件
@@ -1863,22 +1870,14 @@ void GameFlowManager::updateStep006(int index) {
             Serial.println(F("🎉 游戏成功！达到所需正确数"));
             notifyStageComplete("006_0", STAGE_006_0_SUCCESS_JUMP, elapsed);
             stage.state.stage006.subState = 5; // SUB_SUCCESS
-            step3Entered = false;
         } else if (correctElapsed >= 1000) {  // 1秒后继续下一轮
             Serial.println(F("🔄 正确处理完成，转入下一轮准备"));
             stage.state.stage006.subState = 4; // SUB_NEXT_ROUND
             stage.state.stage006.errorStartTime = millis();
-            step3Entered = false;
         }
         
     } else if (stage.state.stage006.subState == 3) {
         // ========================== STEP_4_PROCESS_ERROR: 处理错误按键 ==========================
-        
-        static bool step4Entered = false;
-        if (!step4Entered) {
-            Serial.println(F("💀 进入STEP_4_PROCESS_ERROR - 错误处理中"));
-            step4Entered = true;
-        }
         
         unsigned long errorElapsed = millis() - stage.state.stage006.errorStartTime;
         
@@ -1899,7 +1898,6 @@ void GameFlowManager::updateStep006(int index) {
             Serial.println(F("🔄 错误处理完成，转入下一轮准备"));
             stage.state.stage006.subState = 4; // SUB_NEXT_ROUND
             stage.state.stage006.errorStartTime = millis();
-            step4Entered = false;
         }
         
     } else if (stage.state.stage006.subState == 4) {
@@ -1955,7 +1953,6 @@ void GameFlowManager::updateStep006(int index) {
             pinManager.setPinTemporaryState(voicePin, LOW, STAGE_006_0_VOICE_TRIGGER_LOW_TIME, HIGH);
             stage.state.stage006.voiceTriggered = true;
             stage.state.stage006.voiceTriggerTime = millis();
-            stage.state.stage006.activeVoiceIO = voiceIndex + 1;
             stage.state.stage006.lastVoiceTime = millis();
             
             // 转入等待输入状态
