@@ -23,6 +23,7 @@
 #include "ArduinoSystemHelper.h"
 #include "UniversalHarbingerClient.h"
 #include "GameProtocolHandler.h"
+#include "HardProtocolHandler.h"    // 添加HARD协议处理器
 #include "BY_VoiceController_Unified.h"  // 统一的BY语音控制器
 #include "C102_SimpleConfig.h"            // C102控制器配置
 
@@ -51,6 +52,7 @@ void setup() {
     gameFlowManager.begin();   // 游戏流程管理器
     // gameFlowManager.setStagePrefix(C102_STAGE_PREFIX);  // C102版本不需要前缀设置
     gameProtocolHandler.begin(); // 游戏协议处理器
+    hardProtocolHandler.begin(CONTROLLER_ID); // HARD协议处理器
     
     // ========================== 统一语音控制器初始化 ==========================
     if (ENABLE_VOICE) {
@@ -150,6 +152,9 @@ void onNetworkMessage(String message) {
     // 将GAME消息委托给专用处理器
     if (message.indexOf("[GAME]") != -1) {
         gameProtocolHandler.processGameMessage(message);
+    } else if (message.indexOf("[HARD]") != -1) {
+        // 处理HARD协议消息
+        hardProtocolHandler.processHardMessage(message);
     } else {
         // 简单处理其他消息类型
         if (message.indexOf("REGISTER_CONFIRM") != -1) {

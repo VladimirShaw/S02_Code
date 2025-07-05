@@ -6,6 +6,7 @@
 #include "ArduinoSystemHelper.h"
 #include "UniversalHarbingerClient.h"
 #include "TimeManager.h"
+#include "BY_VoiceController_Unified.h"
 
 class HardProtocolHandler {
 private:
@@ -20,6 +21,7 @@ private:
     bool executeComponentControl(const String& componentId, const String& action, const String& controlParams);
     bool controlLighting(const String& componentId, const String& action, const String& controlParams);
     bool controlPower(const String& componentId, const String& action, const String& controlParams);
+    bool controlAudio(const String& componentId, const String& action, const String& controlParams);
     
     // 响应发送函数
     void sendHardSingleAck(const String& componentId, const String& action);

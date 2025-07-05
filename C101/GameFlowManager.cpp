@@ -20,6 +20,153 @@ extern BY_VoiceController_Unified voice;
 // 全局实例
 GameFlowManager gameFlowManager;
 
+// ========================== 统一引脚状态管理器实现 ==========================
+
+// 全局引脚管理器实例
+UnifiedPinManager pinManager;
+
+// 注册需要管理的引脚
+void UnifiedPinManager::registerPin(int pin, bool initialState) {
+    if (managedPinCount >= MAX_MANAGED_PINS) {
+        Serial.println(F("❌ 引脚管理器已满，无法注册更多引脚"));
+        return;
+    }
+    
+    // 检查是否已经注册过
+    if (findPinIndex(pin) >= 0) {
+        Serial.print(F("⚠️ 引脚"));
+        Serial.print(pin);
+        Serial.println(F("已经注册过"));
+        return;
+    }
+    
+    // 注册新引脚
+    managedPins[managedPinCount].pin = pin;
+    managedPins[managedPinCount].desiredState = initialState;
+    managedPins[managedPinCount].currentState = initialState;
+    managedPins[managedPinCount].changeTime = millis();
+    managedPins[managedPinCount].duration = 0;
+    managedPins[managedPinCount].needsUpdate = true;
+    
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, initialState);
+    
+    Serial.print(F("✅ 注册引脚"));
+    Serial.print(pin);
+    Serial.print(F("，初始状态："));
+    Serial.println(initialState ? F("HIGH") : F("LOW"));
+    
+    managedPinCount++;
+}
+
+// 设置引脚状态（立即生效）
+void UnifiedPinManager::setPinState(int pin, bool state) {
+    int index = findPinIndex(pin);
+    if (index < 0) {
+        // 静默处理未注册的引脚，避免输出错误信息
+        return;
+    }
+    
+    managedPins[index].desiredState = state;
+    managedPins[index].changeTime = millis();
+    managedPins[index].duration = 0;  // 永久状态
+    managedPins[index].needsUpdate = true;
+}
+
+// 设置引脚临时状态（指定时间后自动恢复）
+void UnifiedPinManager::setPinTemporaryState(int pin, bool tempState, unsigned long duration, bool restoreState) {
+    int index = findPinIndex(pin);
+    if (index < 0) {
+        // 静默处理未注册的引脚，避免输出错误信息
+        return;
+    }
+    
+    managedPins[index].desiredState = tempState;
+    managedPins[index].changeTime = millis();
+    managedPins[index].duration = duration;
+    managedPins[index].needsUpdate = true;
+    
+    // 临时保存恢复状态（简化实现，直接在duration到期时设为restoreState）
+    // 这里可以扩展为更复杂的状态管理
+}
+
+// 检查引脚是否被PWM控制（避免冲突）
+bool UnifiedPinManager::isPinPWMControlled(int pin) {
+    // 检查MillisPWM系统是否正在控制这个引脚
+    // 这里需要与MillisPWM系统集成，暂时返回false
+    return false;  // 简化实现
+}
+
+// 统一更新所有引脚状态
+void UnifiedPinManager::updateAllPins() {
+    for (int i = 0; i < managedPinCount; i++) {
+        updateSinglePin(i);
+    }
+}
+
+// 获取引脚当前状态
+bool UnifiedPinManager::getPinState(int pin) {
+    int index = findPinIndex(pin);
+    if (index < 0) {
+        return digitalRead(pin);  // 如果未注册，直接读取硬件状态
+    }
+    return managedPins[index].currentState;
+}
+
+// 调试：打印所有引脚状态
+void UnifiedPinManager::printPinStates() {
+    Serial.println(F("=== 引脚状态管理器 ==="));
+    for (int i = 0; i < managedPinCount; i++) {
+        Serial.print(F("引脚"));
+        Serial.print(managedPins[i].pin);
+        Serial.print(F(": 期望="));
+        Serial.print(managedPins[i].desiredState ? F("HIGH") : F("LOW"));
+        Serial.print(F(", 当前="));
+        Serial.print(managedPins[i].currentState ? F("HIGH") : F("LOW"));
+        Serial.print(F(", 需要更新="));
+        Serial.println(managedPins[i].needsUpdate ? F("是") : F("否"));
+    }
+}
+
+// 查找引脚索引
+int UnifiedPinManager::findPinIndex(int pin) {
+    for (int i = 0; i < managedPinCount; i++) {
+        if (managedPins[i].pin == pin) {
+            return i;
+        }
+    }
+    return -1;  // 未找到
+}
+
+// 实际更新单个引脚
+void UnifiedPinManager::updateSinglePin(int index) {
+    if (index < 0 || index >= managedPinCount) return;
+    
+    VoiceIOState& pinState = managedPins[index];
+    
+    // 检查是否被PWM控制
+    if (isPinPWMControlled(pinState.pin)) {
+        return;  // 跳过PWM控制的引脚
+    }
+    
+    // 检查临时状态是否到期
+    if (pinState.duration > 0 && millis() - pinState.changeTime >= pinState.duration) {
+        // 临时状态到期，恢复到HIGH（默认恢复状态）
+        pinState.desiredState = HIGH;
+        pinState.duration = 0;
+        pinState.needsUpdate = true;
+    }
+    
+    // 更新硬件状态
+    if (pinState.needsUpdate && pinState.desiredState != pinState.currentState) {
+        digitalWrite(pinState.pin, pinState.desiredState);
+        pinState.currentState = pinState.desiredState;
+        pinState.needsUpdate = false;
+        
+        // 移除引脚更新信息输出，减少串口输出
+    }
+}
+
 // ========================== 构造和初始化 ==========================
 GameFlowManager::GameFlowManager() {
     // 初始化并行环节数组
@@ -43,21 +190,59 @@ GameFlowManager::GameFlowManager() {
     }
 }
 
-void GameFlowManager::begin() {
-    Serial.println(F("C101 GameFlowManager初始化完成（支持并行环节）"));
-    Serial.print(F("最大并行环节数: "));
-    Serial.println(MAX_PARALLEL_STAGES);
+bool GameFlowManager::begin() {
+    Serial.println(F("=== C101游戏流程管理器初始化 ==="));
     
-    // 初始化所有通道音量为默认值
+    // 注册语音IO引脚到统一引脚管理器
+    Serial.println(F("🔧 注册语音IO引脚到统一管理器..."));
+    pinManager.registerPin(STAGE_006_0_VOICE_IO_1, HIGH);
+    pinManager.registerPin(STAGE_006_0_VOICE_IO_2, HIGH);
+    pinManager.registerPin(STAGE_006_0_VOICE_IO_3, HIGH);
+    pinManager.registerPin(STAGE_006_0_VOICE_IO_4, HIGH);
+    
+    // 注册所有画灯引脚
+    Serial.println(F("🔧 注册画灯引脚到统一管理器..."));
+    for (int i = 0; i < C101_PAINTING_LIGHT_COUNT; i++) {
+        pinManager.registerPin(C101_PAINTING_LIGHT_PINS[i], LOW);
+    }
+    
+    // 注册所有按键灯引脚
+    Serial.println(F("🔧 注册按键灯引脚到统一管理器..."));
+    for (int i = 0; i < C101_TAUNT_BUTTON_COUNT; i++) {
+        pinManager.registerPin(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
+    }
+    
+    // 注册所有植物灯引脚
+    Serial.println(F("🔧 注册植物灯引脚到统一管理器..."));
+    for (int i = 0; i < C101_PLANT_LIGHT_COUNT; i++) {
+        pinManager.registerPin(C101_PLANT_LIGHT_PINS[i], LOW);
+    }
+    
+    // 注册其他重要引脚
+    Serial.println(F("🔧 注册其他控制引脚到统一管理器..."));
+    pinManager.registerPin(C101_DOOR_LOCK_PIN, HIGH);
+    pinManager.registerPin(C101_DOOR_LIGHT_PIN, LOW);
+    pinManager.registerPin(C101_AMBIENT_LIGHT_PIN, LOW);
+    for (int i = 0; i < C101_HINT_LED_COUNT; i++) {
+        pinManager.registerPin(C101_HINT_LED_PINS[i], LOW);
+    }
+    pinManager.registerPin(C101_BUTTERFLY_CARD_RELAY_PIN, LOW);
+    pinManager.registerPin(C101_BUTTERFLY_LIGHT_PIN, LOW);
+    pinManager.registerPin(C101_AD_FAN_PIN, LOW);
+    
+    Serial.println(F("✅ 所有引脚注册完成"));
+    
+    // 初始化统一语音控制器
+    if (!voice.begin()) {
+        Serial.println(F("❌ 语音控制器初始化失败"));
+        return false;
+    }
+    
+    // 初始化所有通道音量
     initializeAllVolumes();
     
-    // 初始化紧急开门功能
-    initEmergencyDoorControl();
-    
-    // 初始化门锁和灯光状态
-    Serial.println(F("🎮 初始化门锁和灯光状态"));
-    resetDoorAndLightState();
-    Serial.println(F("✅ 门锁和灯光状态初始化完成"));
+    Serial.println(F("✅ C101游戏流程管理器初始化完成"));
+    return true;
 }
 
 // ========================== 私有辅助方法 ==========================
@@ -154,36 +339,36 @@ bool GameFlowManager::startStage(const String& stageId) {
         Serial.println(F("🔧 应用000_0环节引脚状态配置..."));
         
         // 入口门系统
-        digitalWrite(C101_DOOR_LOCK_PIN, STAGE_000_0_DOOR_LOCK_STATE);
-        digitalWrite(C101_DOOR_LIGHT_PIN, STAGE_000_0_DOOR_LIGHT_STATE);
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, STAGE_000_0_DOOR_LOCK_STATE);
+        pinManager.setPinState(C101_DOOR_LIGHT_PIN, STAGE_000_0_DOOR_LIGHT_STATE);
         
         // 氛围射灯系统
-        digitalWrite(C101_AMBIENT_LIGHT_PIN, STAGE_000_0_AMBIENT_LIGHT_STATE);
+        pinManager.setPinState(C101_AMBIENT_LIGHT_PIN, STAGE_000_0_AMBIENT_LIGHT_STATE);
         
         // 嘲讽按键灯光系统
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_000_0_TAUNT_BUTTON1_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_000_0_TAUNT_BUTTON2_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_000_0_TAUNT_BUTTON3_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_000_0_TAUNT_BUTTON4_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_000_0_TAUNT_BUTTON1_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_000_0_TAUNT_BUTTON2_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_000_0_TAUNT_BUTTON3_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_000_0_TAUNT_BUTTON4_STATE);
         
         // 画灯谜题系统
-        digitalWrite(C101_PAINTING_LIGHT_PINS[0], STAGE_000_0_PAINTING_LIGHT1_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[1], STAGE_000_0_PAINTING_LIGHT2_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[2], STAGE_000_0_PAINTING_LIGHT3_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[3], STAGE_000_0_PAINTING_LIGHT4_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[4], STAGE_000_0_PAINTING_LIGHT5_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[5], STAGE_000_0_PAINTING_LIGHT6_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[6], STAGE_000_0_PAINTING_LIGHT7_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[7], STAGE_000_0_PAINTING_LIGHT8_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[0], STAGE_000_0_PAINTING_LIGHT1_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[1], STAGE_000_0_PAINTING_LIGHT2_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[2], STAGE_000_0_PAINTING_LIGHT3_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[3], STAGE_000_0_PAINTING_LIGHT4_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[4], STAGE_000_0_PAINTING_LIGHT5_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[5], STAGE_000_0_PAINTING_LIGHT6_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[6], STAGE_000_0_PAINTING_LIGHT7_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[7], STAGE_000_0_PAINTING_LIGHT8_STATE);
         
         // 提示灯带系统
-        digitalWrite(C101_HINT_LED_PINS[0], STAGE_000_0_HINT_LED1_STATE);
-        digitalWrite(C101_HINT_LED_PINS[1], STAGE_000_0_HINT_LED2_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[0], STAGE_000_0_HINT_LED1_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[1], STAGE_000_0_HINT_LED2_STATE);
         
         // 蝴蝶灯谜题系统
-        digitalWrite(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_000_0_BUTTERFLY_CARD_STATE);
-        digitalWrite(C101_BUTTERFLY_LIGHT_PIN, STAGE_000_0_BUTTERFLY_LIGHT_STATE);
-        digitalWrite(C101_AD_FAN_PIN, STAGE_000_0_AD_FAN_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_000_0_BUTTERFLY_CARD_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_LIGHT_PIN, STAGE_000_0_BUTTERFLY_LIGHT_STATE);
+        pinManager.setPinState(C101_AD_FAN_PIN, STAGE_000_0_AD_FAN_STATE);
         
         Serial.println(F("✅ 000_0环节引脚状态配置完成"));
         
@@ -210,36 +395,36 @@ bool GameFlowManager::startStage(const String& stageId) {
         Serial.println(F("🔧 应用001_1环节引脚状态配置..."));
         
         // 入口门系统
-        digitalWrite(C101_DOOR_LOCK_PIN, STAGE_001_1_DOOR_LOCK_STATE);
-        digitalWrite(C101_DOOR_LIGHT_PIN, STAGE_001_1_DOOR_LIGHT_STATE);
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, STAGE_001_1_DOOR_LOCK_STATE);
+        pinManager.setPinState(C101_DOOR_LIGHT_PIN, STAGE_001_1_DOOR_LIGHT_STATE);
         
         // 氛围射灯系统
-        digitalWrite(C101_AMBIENT_LIGHT_PIN, STAGE_001_1_AMBIENT_LIGHT_STATE);
+        pinManager.setPinState(C101_AMBIENT_LIGHT_PIN, STAGE_001_1_AMBIENT_LIGHT_STATE);
         
         // 嘲讽按键灯光系统
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_001_1_TAUNT_BUTTON1_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_001_1_TAUNT_BUTTON2_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_001_1_TAUNT_BUTTON3_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_001_1_TAUNT_BUTTON4_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_001_1_TAUNT_BUTTON1_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_001_1_TAUNT_BUTTON2_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_001_1_TAUNT_BUTTON3_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_001_1_TAUNT_BUTTON4_STATE);
         
         // 画灯谜题系统
-        digitalWrite(C101_PAINTING_LIGHT_PINS[0], STAGE_001_1_PAINTING_LIGHT1_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[1], STAGE_001_1_PAINTING_LIGHT2_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[2], STAGE_001_1_PAINTING_LIGHT3_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[3], STAGE_001_1_PAINTING_LIGHT4_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[4], STAGE_001_1_PAINTING_LIGHT5_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[5], STAGE_001_1_PAINTING_LIGHT6_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[6], STAGE_001_1_PAINTING_LIGHT7_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[7], STAGE_001_1_PAINTING_LIGHT8_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[0], STAGE_001_1_PAINTING_LIGHT1_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[1], STAGE_001_1_PAINTING_LIGHT2_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[2], STAGE_001_1_PAINTING_LIGHT3_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[3], STAGE_001_1_PAINTING_LIGHT4_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[4], STAGE_001_1_PAINTING_LIGHT5_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[5], STAGE_001_1_PAINTING_LIGHT6_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[6], STAGE_001_1_PAINTING_LIGHT7_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[7], STAGE_001_1_PAINTING_LIGHT8_STATE);
         
         // 提示灯带系统
-        digitalWrite(C101_HINT_LED_PINS[0], STAGE_001_1_HINT_LED1_STATE);
-        digitalWrite(C101_HINT_LED_PINS[1], STAGE_001_1_HINT_LED2_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[0], STAGE_001_1_HINT_LED1_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[1], STAGE_001_1_HINT_LED2_STATE);
         
         // 蝴蝶灯谜题系统
-        digitalWrite(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_001_1_BUTTERFLY_CARD_STATE);
-        digitalWrite(C101_BUTTERFLY_LIGHT_PIN, STAGE_001_1_BUTTERFLY_LIGHT_STATE);
-        digitalWrite(C101_AD_FAN_PIN, STAGE_001_1_AD_FAN_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_001_1_BUTTERFLY_CARD_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_LIGHT_PIN, STAGE_001_1_BUTTERFLY_LIGHT_STATE);
+        pinManager.setPinState(C101_AD_FAN_PIN, STAGE_001_1_AD_FAN_STATE);
         
         Serial.println(F("✅ 001_1环节引脚状态配置完成"));
         
@@ -308,39 +493,39 @@ bool GameFlowManager::startStage(const String& stageId) {
         Serial.println(F("🔧 应用001_2环节引脚状态配置..."));
         
         // 入口门系统
-        digitalWrite(C101_DOOR_LOCK_PIN, STAGE_001_2_DOOR_LOCK_STATE);
-        digitalWrite(C101_DOOR_LIGHT_PIN, STAGE_001_2_DOOR_LIGHT_STATE);
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, STAGE_001_2_DOOR_LOCK_STATE);
+        pinManager.setPinState(C101_DOOR_LIGHT_PIN, STAGE_001_2_DOOR_LIGHT_STATE);
         Serial.print(F("🔒 电磁锁"));
         Serial.print(STAGE_001_2_DOOR_LOCK_STATE ? "上锁" : "解锁");
         Serial.println(F(" (Pin26)"));
         
         // 氛围射灯系统
-        digitalWrite(C101_AMBIENT_LIGHT_PIN, STAGE_001_2_AMBIENT_LIGHT_STATE);
+        pinManager.setPinState(C101_AMBIENT_LIGHT_PIN, STAGE_001_2_AMBIENT_LIGHT_STATE);
         
         // 嘲讽按键灯光系统
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_001_2_TAUNT_BUTTON1_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_001_2_TAUNT_BUTTON2_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_001_2_TAUNT_BUTTON3_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_001_2_TAUNT_BUTTON4_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_001_2_TAUNT_BUTTON1_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_001_2_TAUNT_BUTTON2_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_001_2_TAUNT_BUTTON3_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_001_2_TAUNT_BUTTON4_STATE);
         
         // 画灯谜题系统
-        digitalWrite(C101_PAINTING_LIGHT_PINS[0], STAGE_001_2_PAINTING_LIGHT1_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[1], STAGE_001_2_PAINTING_LIGHT2_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[2], STAGE_001_2_PAINTING_LIGHT3_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[3], STAGE_001_2_PAINTING_LIGHT4_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[4], STAGE_001_2_PAINTING_LIGHT5_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[5], STAGE_001_2_PAINTING_LIGHT6_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[6], STAGE_001_2_PAINTING_LIGHT7_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[7], STAGE_001_2_PAINTING_LIGHT8_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[0], STAGE_001_2_PAINTING_LIGHT1_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[1], STAGE_001_2_PAINTING_LIGHT2_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[2], STAGE_001_2_PAINTING_LIGHT3_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[3], STAGE_001_2_PAINTING_LIGHT4_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[4], STAGE_001_2_PAINTING_LIGHT5_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[5], STAGE_001_2_PAINTING_LIGHT6_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[6], STAGE_001_2_PAINTING_LIGHT7_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[7], STAGE_001_2_PAINTING_LIGHT8_STATE);
         
         // 提示灯带系统
-        digitalWrite(C101_HINT_LED_PINS[0], STAGE_001_2_HINT_LED1_STATE);
-        digitalWrite(C101_HINT_LED_PINS[1], STAGE_001_2_HINT_LED2_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[0], STAGE_001_2_HINT_LED1_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[1], STAGE_001_2_HINT_LED2_STATE);
         
         // 蝴蝶灯谜题系统
-        digitalWrite(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_001_2_BUTTERFLY_CARD_STATE);
-        digitalWrite(C101_BUTTERFLY_LIGHT_PIN, STAGE_001_2_BUTTERFLY_LIGHT_STATE);
-        digitalWrite(C101_AD_FAN_PIN, STAGE_001_2_AD_FAN_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_001_2_BUTTERFLY_CARD_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_LIGHT_PIN, STAGE_001_2_BUTTERFLY_LIGHT_STATE);
+        pinManager.setPinState(C101_AD_FAN_PIN, STAGE_001_2_AD_FAN_STATE);
         
         Serial.println(F("✅ 001_2环节引脚状态配置完成"));
         
@@ -364,36 +549,36 @@ bool GameFlowManager::startStage(const String& stageId) {
         Serial.println(F("🔧 应用002_0环节引脚状态配置..."));
         
         // 入口门系统
-        digitalWrite(C101_DOOR_LOCK_PIN, STAGE_002_0_DOOR_LOCK_STATE);
-        digitalWrite(C101_DOOR_LIGHT_PIN, STAGE_002_0_DOOR_LIGHT_STATE);
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, STAGE_002_0_DOOR_LOCK_STATE);
+        pinManager.setPinState(C101_DOOR_LIGHT_PIN, STAGE_002_0_DOOR_LIGHT_STATE);
         
         // 氛围射灯系统
-        digitalWrite(C101_AMBIENT_LIGHT_PIN, STAGE_002_0_AMBIENT_LIGHT_STATE);
+        pinManager.setPinState(C101_AMBIENT_LIGHT_PIN, STAGE_002_0_AMBIENT_LIGHT_STATE);
         
         // 嘲讽按键灯光系统
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_002_0_TAUNT_BUTTON1_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_002_0_TAUNT_BUTTON2_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_002_0_TAUNT_BUTTON3_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_002_0_TAUNT_BUTTON4_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_002_0_TAUNT_BUTTON1_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_002_0_TAUNT_BUTTON2_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_002_0_TAUNT_BUTTON3_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_002_0_TAUNT_BUTTON4_STATE);
         
         // 画灯谜题系统 - 初始化为关闭状态，由呼吸和闪烁效果动态控制
-        digitalWrite(C101_PAINTING_LIGHT_PINS[0], STAGE_002_0_PAINTING_LIGHT1_STATE);  // 画1：不参与效果
-        digitalWrite(C101_PAINTING_LIGHT_PINS[1], STAGE_002_0_PAINTING_LIGHT2_STATE);  // 画2：呼吸+闪烁
-        digitalWrite(C101_PAINTING_LIGHT_PINS[2], STAGE_002_0_PAINTING_LIGHT3_STATE);  // 画3：不参与效果
-        digitalWrite(C101_PAINTING_LIGHT_PINS[3], STAGE_002_0_PAINTING_LIGHT4_STATE);  // 画4：呼吸+闪烁
-        digitalWrite(C101_PAINTING_LIGHT_PINS[4], STAGE_002_0_PAINTING_LIGHT5_STATE);  // 画5：不参与效果
-        digitalWrite(C101_PAINTING_LIGHT_PINS[5], STAGE_002_0_PAINTING_LIGHT6_STATE);  // 画6：闪烁
-        digitalWrite(C101_PAINTING_LIGHT_PINS[6], STAGE_002_0_PAINTING_LIGHT7_STATE);  // 画7：不参与效果
-        digitalWrite(C101_PAINTING_LIGHT_PINS[7], STAGE_002_0_PAINTING_LIGHT8_STATE);  // 画8：呼吸+闪烁
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[0], STAGE_002_0_PAINTING_LIGHT1_STATE);  // 画1：不参与效果
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[1], STAGE_002_0_PAINTING_LIGHT2_STATE);  // 画2：呼吸+闪烁
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[2], STAGE_002_0_PAINTING_LIGHT3_STATE);  // 画3：不参与效果
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[3], STAGE_002_0_PAINTING_LIGHT4_STATE);  // 画4：呼吸+闪烁
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[4], STAGE_002_0_PAINTING_LIGHT5_STATE);  // 画5：不参与效果
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[5], STAGE_002_0_PAINTING_LIGHT6_STATE);  // 画6：闪烁
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[6], STAGE_002_0_PAINTING_LIGHT7_STATE);  // 画7：不参与效果
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[7], STAGE_002_0_PAINTING_LIGHT8_STATE);  // 画8：呼吸+闪烁
         
         // 提示灯带系统
-        digitalWrite(C101_HINT_LED_PINS[0], STAGE_002_0_HINT_LED1_STATE);
-        digitalWrite(C101_HINT_LED_PINS[1], STAGE_002_0_HINT_LED2_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[0], STAGE_002_0_HINT_LED1_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[1], STAGE_002_0_HINT_LED2_STATE);
         
         // 蝴蝶灯谜题系统
-        digitalWrite(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_002_0_BUTTERFLY_CARD_STATE);
-        digitalWrite(C101_BUTTERFLY_LIGHT_PIN, STAGE_002_0_BUTTERFLY_LIGHT_STATE);
-        digitalWrite(C101_AD_FAN_PIN, STAGE_002_0_AD_FAN_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_002_0_BUTTERFLY_CARD_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_LIGHT_PIN, STAGE_002_0_BUTTERFLY_LIGHT_STATE);
+        pinManager.setPinState(C101_AD_FAN_PIN, STAGE_002_0_AD_FAN_STATE);
         
         Serial.println(F("✅ 002_0环节引脚状态配置完成"));
         
@@ -444,44 +629,44 @@ bool GameFlowManager::startStage(const String& stageId) {
         Serial.println(F("🔧 应用006_0环节引脚状态配置..."));
         
         // 入口门系统
-        digitalWrite(C101_DOOR_LOCK_PIN, STAGE_006_0_DOOR_LOCK_STATE);
-        digitalWrite(C101_DOOR_LIGHT_PIN, STAGE_006_0_DOOR_LIGHT_STATE);
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, STAGE_006_0_DOOR_LOCK_STATE);
+        pinManager.setPinState(C101_DOOR_LIGHT_PIN, STAGE_006_0_DOOR_LIGHT_STATE);
         
         // 氛围射灯系统
-        digitalWrite(C101_AMBIENT_LIGHT_PIN, STAGE_006_0_AMBIENT_LIGHT_STATE);
+        pinManager.setPinState(C101_AMBIENT_LIGHT_PIN, STAGE_006_0_AMBIENT_LIGHT_STATE);
         
         // 嘲讽按键灯光系统 - 初始化为关闭，由呼吸效果控制
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_006_0_TAUNT_BUTTON1_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_006_0_TAUNT_BUTTON2_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_006_0_TAUNT_BUTTON3_STATE);
-        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_006_0_TAUNT_BUTTON4_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[0], STAGE_006_0_TAUNT_BUTTON1_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[1], STAGE_006_0_TAUNT_BUTTON2_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[2], STAGE_006_0_TAUNT_BUTTON3_STATE);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[3], STAGE_006_0_TAUNT_BUTTON4_STATE);
         
         // 画灯谜题系统
-        digitalWrite(C101_PAINTING_LIGHT_PINS[0], STAGE_006_0_PAINTING_LIGHT1_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[1], STAGE_006_0_PAINTING_LIGHT2_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[2], STAGE_006_0_PAINTING_LIGHT3_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[3], STAGE_006_0_PAINTING_LIGHT4_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[4], STAGE_006_0_PAINTING_LIGHT5_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[5], STAGE_006_0_PAINTING_LIGHT6_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[6], STAGE_006_0_PAINTING_LIGHT7_STATE);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[7], STAGE_006_0_PAINTING_LIGHT8_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[0], STAGE_006_0_PAINTING_LIGHT1_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[1], STAGE_006_0_PAINTING_LIGHT2_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[2], STAGE_006_0_PAINTING_LIGHT3_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[3], STAGE_006_0_PAINTING_LIGHT4_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[4], STAGE_006_0_PAINTING_LIGHT5_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[5], STAGE_006_0_PAINTING_LIGHT6_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[6], STAGE_006_0_PAINTING_LIGHT7_STATE);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[7], STAGE_006_0_PAINTING_LIGHT8_STATE);
         
         // 提示灯带系统
-        digitalWrite(C101_HINT_LED_PINS[0], STAGE_006_0_HINT_LED1_STATE);
-        digitalWrite(C101_HINT_LED_PINS[1], STAGE_006_0_HINT_LED2_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[0], STAGE_006_0_HINT_LED1_STATE);
+        pinManager.setPinState(C101_HINT_LED_PINS[1], STAGE_006_0_HINT_LED2_STATE);
         
         // 蝴蝶灯谜题系统
-        digitalWrite(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_006_0_BUTTERFLY_CARD_STATE);
-        digitalWrite(C101_BUTTERFLY_LIGHT_PIN, STAGE_006_0_BUTTERFLY_LIGHT_STATE);
-        digitalWrite(C101_AD_FAN_PIN, STAGE_006_0_AD_FAN_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_CARD_RELAY_PIN, STAGE_006_0_BUTTERFLY_CARD_STATE);
+        pinManager.setPinState(C101_BUTTERFLY_LIGHT_PIN, STAGE_006_0_BUTTERFLY_LIGHT_STATE);
+        pinManager.setPinState(C101_AD_FAN_PIN, STAGE_006_0_AD_FAN_STATE);
         
         Serial.println(F("✅ 006_0环节引脚状态配置完成"));
         
         // ========================== 初始化嘲讽按键游戏状态 ==========================
-        Serial.println(F("🎮 初始化嘲讽按键游戏状态..."));
+        Serial.println(F("�� 初始化嘲讽按键游戏状态..."));
         
         // 初始化内部状态机
-        stages[slot].state.stage006.subState = StageState::SUB_INIT;
+        stages[slot].state.stage006.subState = (decltype(stages[slot].state.stage006.subState))0; // SUB_INIT
         
         // 游戏核心状态
         stages[slot].state.stage006.totalCount = 0;           // 总计数器从0开始
@@ -515,21 +700,30 @@ bool GameFlowManager::startStage(const String& stageId) {
         }
         
         // 初始化嘲讽按键输入引脚
-        for (int i = 0; i < 4; i++) {
-            pinMode(C101_TAUNT_BUTTON_PINS[i], INPUT_PULLUP);
+        for (int i = 0; i < C101_TAUNT_BUTTON_COUNT; i++) {
+            pinMode(C101_TAUNT_BUTTON_COM_PINS[i], INPUT_PULLUP);
         }
         Serial.println(F("🔘 嘲讽按键输入引脚初始化完成"));
+        
+        // 初始化按键防抖状态
+        stages[slot].state.stage006.buttonDebouncing = false;
+        stages[slot].state.stage006.debouncingButton = -1;
+        stages[slot].state.stage006.debounceStartTime = 0;
+        for (int i = 0; i < 4; i++) {
+            stages[slot].state.stage006.lastButtonStates[i] = HIGH;  // 初始状态为HIGH（未按下）
+        }
+        Serial.println(F("🔘 按键防抖状态初始化完成"));
         
         // 初始化语音IO输出引脚
         pinMode(STAGE_006_0_VOICE_IO_1, OUTPUT);
         pinMode(STAGE_006_0_VOICE_IO_2, OUTPUT);
         pinMode(STAGE_006_0_VOICE_IO_3, OUTPUT);
         pinMode(STAGE_006_0_VOICE_IO_4, OUTPUT);
-        digitalWrite(STAGE_006_0_VOICE_IO_1, HIGH);
-        digitalWrite(STAGE_006_0_VOICE_IO_2, HIGH);
-        digitalWrite(STAGE_006_0_VOICE_IO_3, HIGH);
-        digitalWrite(STAGE_006_0_VOICE_IO_4, HIGH);
-        Serial.println(F("🔊 语音IO输出引脚初始化完成"));
+        pinManager.setPinState(STAGE_006_0_VOICE_IO_1, HIGH);
+        pinManager.setPinState(STAGE_006_0_VOICE_IO_2, HIGH);
+        pinManager.setPinState(STAGE_006_0_VOICE_IO_3, HIGH);
+        pinManager.setPinState(STAGE_006_0_VOICE_IO_4, HIGH);
+        Serial.println(F(" 语音IO输出引脚初始化完成"));
         
         Serial.println(F("🌟 嘲讽按键呼吸效果："));
         Serial.println(F("   10秒循环：0-1500ms亮，1500-3000ms灭，5000-6500ms亮，6500-8000ms灭"));
@@ -639,16 +833,30 @@ void GameFlowManager::stopAllStages() {
     // 停止所有植物灯呼吸效果（000_0环节相关）
     for (int i = 0; i < C101_PLANT_LIGHT_COUNT; i++) {
         MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[i]);
-        digitalWrite(C101_PLANT_LIGHT_PINS[i], LOW);
+        pinManager.setPinState(C101_PLANT_LIGHT_PINS[i], LOW);
     }
     Serial.println(F("💡 所有植物灯效果已停止"));
     
     // 停止所有画灯效果（002_0环节相关）
     for (int i = 0; i < C101_PAINTING_LIGHT_COUNT; i++) {
         MillisPWM::stopBreathing(C101_PAINTING_LIGHT_PINS[i]);
-        digitalWrite(C101_PAINTING_LIGHT_PINS[i], LOW);
+        pinManager.setPinState(C101_PAINTING_LIGHT_PINS[i], LOW);
     }
     Serial.println(F("🎨 所有画灯效果已停止"));
+    
+    // 停止所有按键灯呼吸效果（006_0环节相关）
+    for (int i = 0; i < 4; i++) {
+        MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
+        pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
+    }
+    Serial.println(F("💡 所有按键灯效果已停止"));
+    
+    // 停止所有音频播放（006_0环节相关）
+    pinManager.setPinState(STAGE_006_0_VOICE_IO_1, HIGH);
+    pinManager.setPinState(STAGE_006_0_VOICE_IO_2, HIGH);
+    pinManager.setPinState(STAGE_006_0_VOICE_IO_3, HIGH);
+    pinManager.setPinState(STAGE_006_0_VOICE_IO_4, HIGH);
+    Serial.println(F("🎵 所有音频播放已停止"));
     
     // 重置所有环节状态
     for (int i = 0; i < MAX_PARALLEL_STAGES; i++) {
@@ -745,41 +953,18 @@ void GameFlowManager::printAvailableStages() {
 
 // ========================== 更新和调试功能 ==========================
 void GameFlowManager::update() {
-    // ========================== 紧急开门控制 (最高优先级) ==========================
-    // 无视任何步骤，只要Pin24触发，就让Pin26解锁10秒
-    updateEmergencyDoorControl();
+    // 更新统一引脚管理器
+    pinManager.updateAllPins();
     
-    if (activeStageCount == 0) {
-        return;
-    }
+    // 检查紧急开门功能
+    checkEmergencyDoorControl();
     
-    // 检查全局停止标志
-    if (globalStopped) {
-        return;
-    }
-    
-    // 更新所有运行中的环节
+    // 更新所有活跃环节
     for (int i = 0; i < MAX_PARALLEL_STAGES; i++) {
         if (stages[i].running) {
-            const String& stageId = stages[i].stageId;
-            
-            // 根据环节ID调用对应的更新方法
-            if (stageId == "000_0") {
-                updateStep000(i);
-            } else if (stageId == "001_1") {
-                updateStep001_1(i);
-            } else if (stageId == "001_2") {
-                updateStep001_2(i);
-            } else if (stageId == "002_0") {
-                updateStep002(i);
-            } else if (stageId == "006_0") {
-                updateStep006(i);
-            }
+            updateStage(i);
         }
     }
-    
-    // 更新兼容性变量
-    updateCompatibilityVars();
 }
 
 void GameFlowManager::printStatus() {
@@ -829,7 +1014,7 @@ void GameFlowManager::requestStageJump(const String& nextStage) {
 }
 
 void GameFlowManager::requestMultiStageJump(const String& currentStep, const String& nextSteps) {
-    Serial.print(F("📤 请求从"));
+    Serial.print(F("�� 请求从"));
     Serial.print(currentStep);
     Serial.print(F("跳转到环节: "));
     Serial.println(nextSteps);
@@ -882,7 +1067,7 @@ void GameFlowManager::updateEmergencyDoorControl() {
         Serial.println(F("🚨 紧急开门触发！门禁读卡器检测到信号"));
         
         // 立即解锁电磁锁
-        digitalWrite(C101_DOOR_LOCK_PIN, LOW);   // Pin26解锁（断电）
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, LOW);   // Pin26解锁（断电）
         emergencyUnlockStartTime = millis();
         emergencyUnlockActive = true;
         
@@ -892,7 +1077,7 @@ void GameFlowManager::updateEmergencyDoorControl() {
     
     // 检查紧急解锁超时
     if (emergencyUnlockActive && (millis() - emergencyUnlockStartTime >= EMERGENCY_UNLOCK_DURATION)) {
-        digitalWrite(C101_DOOR_LOCK_PIN, HIGH);  // Pin26上锁（通电）
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, HIGH);  // Pin26上锁（通电）
         emergencyUnlockActive = false;
         Serial.println(F("🔒 电磁锁自动上锁"));
     }
@@ -906,13 +1091,13 @@ bool GameFlowManager::isEmergencyUnlockActive() const {
 void GameFlowManager::resetDoorAndLightState() {
     // 只有在非紧急解锁状态下才重置门锁状态
     if (!emergencyUnlockActive) {
-        digitalWrite(C101_DOOR_LOCK_PIN, HIGH);   // Pin26电磁锁上锁（通电）
+        pinManager.setPinState(C101_DOOR_LOCK_PIN, HIGH);   // Pin26电磁锁上锁（通电）
         Serial.println(F("🔒 电磁锁已上锁"));
     } else {
         Serial.println(F("⚠️ 紧急解锁激活中，跳过门锁重置"));
     }
     
-    digitalWrite(C101_DOOR_LIGHT_PIN, LOW);       // Pin25指引射灯关闭
+    pinManager.setPinState(C101_DOOR_LIGHT_PIN, LOW);       // Pin25指引射灯关闭
     Serial.println(F("💡 指引射灯已关闭"));
 }
 
@@ -1156,7 +1341,7 @@ void GameFlowManager::updateStep001_2(int index) {
         // 确保所有植物灯都完全关闭
         for (int i = 0; i < C101_PLANT_LIGHT_COUNT; i++) {
             MillisPWM::stop(C101_PLANT_LIGHT_PINS[i]);      // 停止PWM
-            digitalWrite(C101_PLANT_LIGHT_PINS[i], LOW);    // 设置为低电平
+            pinManager.setPinState(C101_PLANT_LIGHT_PINS[i], LOW);    // 设置为低电平
         }
         
         Serial.println(F("✅ 植物灯渐灭完成"));
@@ -1277,8 +1462,8 @@ void GameFlowManager::updateStep002(int index) {
                 // 画4长+画8长闪烁组：停止PWM并清理灯光
                 MillisPWM::stop(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_4_INDEX]);
                 MillisPWM::stop(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_8_INDEX]);
-                digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_4_INDEX], LOW);
-                digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_8_INDEX], LOW);
+                pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_4_INDEX], LOW);
+                pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_8_INDEX], LOW);
                 Serial.print(F("⚡ [循环"));
                 Serial.print(currentCycle + 1);
                 Serial.println(F("] 开始画4长+画8长闪烁"));
@@ -1286,8 +1471,8 @@ void GameFlowManager::updateStep002(int index) {
                 // 画2长+画6长闪烁组：停止PWM并清理灯光
                 MillisPWM::stop(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_2_INDEX]);
                 MillisPWM::stop(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_6_INDEX]);
-                digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_2_INDEX], LOW);
-                digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_6_INDEX], LOW);
+                pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_2_INDEX], LOW);
+                pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_6_INDEX], LOW);
                 Serial.print(F("⚡ [循环"));
                 Serial.print(currentCycle + 1);
                 Serial.println(F("] 开始画2长+画6长闪烁"));
@@ -1306,12 +1491,12 @@ void GameFlowManager::updateStep002(int index) {
                 // 根据闪烁组和状态控制灯光
                 if (currentFlashGroup == 0 || currentFlashGroup == 2) {
                     // 画4长+画8长闪烁
-                    digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_4_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
-                    digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_8_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
+                    pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_4_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
+                    pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_8_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
                 } else if (currentFlashGroup == 1 || currentFlashGroup == 3) {
                     // 画2长+画6长闪烁
-                    digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_2_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
-                    digitalWrite(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_6_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
+                    pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_2_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
+                    pinManager.setPinState(C101_PAINTING_LIGHT_PINS[STAGE_002_0_PAINTING_LIGHT_6_INDEX], stage.state.stage002.flashState ? HIGH : LOW);
                 }
                 
                 // 如果完成了一个亮灭周期，增加循环计数
@@ -1337,11 +1522,21 @@ void GameFlowManager::updateStep002(int index) {
     // 60秒后跳转到下一环节或报告完成
     if (!stage.jumpRequested && elapsed >= STAGE_002_0_DURATION) {
         if (strlen(STAGE_002_0_NEXT_STAGE) > 0) {
-            Serial.print(F("⏰ [C101-槽位"));
-            Serial.print(index);
-            Serial.print(F("] 环节002_0完成，跳转到"));
-            Serial.println(STAGE_002_0_NEXT_STAGE);
-            notifyStageComplete("002_0", STAGE_002_0_NEXT_STAGE, elapsed);
+            // 检查下一环节是否已经在运行
+            if (!isStageRunning(STAGE_002_0_NEXT_STAGE)) {
+                Serial.print(F("⏰ [C101-槽位"));
+                Serial.print(index);
+                Serial.print(F("] 环节002_0完成，跳转到"));
+                Serial.println(STAGE_002_0_NEXT_STAGE);
+                notifyStageComplete("002_0", STAGE_002_0_NEXT_STAGE, elapsed);
+            } else {
+                Serial.print(F("⚠️ [C101-槽位"));
+                Serial.print(index);
+                Serial.print(F("] 环节002_0定时跳转取消，目标环节"));
+                Serial.print(STAGE_002_0_NEXT_STAGE);
+                Serial.println(F("已在运行"));
+                stage.jumpRequested = true;  // 标记为已处理，避免重复检查
+            }
         } else {
             Serial.print(F("⏰ [C101-槽位"));
             Serial.print(index);
@@ -1420,324 +1615,378 @@ void GameFlowManager::updateStep006(int index) {
         return;
     }
     
-    // 使用内部状态机管理游戏流程
-    switch (stage.state.stage006.subState) {
-        case StageState::SUB_INIT:
-            // ========================== 初始化阶段 ==========================
-            // 开始嘲讽按键呼吸效果
-            if (!stage.state.stage006.breathActive) {
-                stage.state.stage006.breathActive = true;
-                stage.state.stage006.breathStartTime = elapsed;
-                
-                // 启动4个嘲讽按键的呼吸效果
-                for (int i = 0; i < 4; i++) {
-                    MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0); // 3秒呼吸周期
-                }
-                Serial.println(F("🌟 嘲讽按键呼吸效果启动"));
-            }
+    // ========================== 基于步骤的if-else流程 ==========================
+    
+    if (stage.state.stage006.subState == 0) {
+        // ========================== STEP_1_INIT: 初始化 ==========================
+        
+        Serial.println(F("🎮 开始006环节初始化"));
+        
+        // 启动4个按键的呼吸效果（3秒周期）
+        for (int i = 0; i < 4; i++) {
+            MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0);
+        }
+        
+        // 初始化游戏状态
+        stage.state.stage006.totalCount = 1;  // 第一轮 m=1
+        stage.state.stage006.correctCount = 0;
+        stage.state.stage006.buttonPressed = false;
+        stage.state.stage006.buttonDebouncing = false;
+        
+        // 初始化按键状态记录
+        for (int i = 0; i < 4; i++) {
+            stage.state.stage006.lastButtonStates[i] = digitalRead(C101_TAUNT_BUTTON_COM_PINS[i]);
+        }
+        
+        // 初始化植物灯状态记录
+        for (int i = 0; i < 4; i++) {
+            stage.state.stage006.plantLightStates[i] = false;
+        }
+        
+        // 计算第一轮的正确按键和语音IO
+        int voiceIndex = (stage.state.stage006.totalCount - 1) % 4;  // m=1时，voiceIndex=0
+        stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
+                                                   (voiceIndex == 1) ? 3 : 
+                                                   (voiceIndex == 2) ? 2 : 4;
+        
+        // 触发对应的语音IO
+        int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
+                       (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
+                       (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
+                                           STAGE_006_0_VOICE_IO_4;
+        
+        Serial.print(F("🎵 播放语音IO"));
+        Serial.print(voiceIndex + 1);
+        Serial.print(F("，正确按键="));
+        Serial.println(stage.state.stage006.currentCorrectButton);
+        
+        // 正常的语音IO触发逻辑 - 使用临时状态自动恢复
+        pinManager.setPinTemporaryState(voicePin, LOW, STAGE_006_0_VOICE_TRIGGER_LOW_TIME, HIGH);
+        stage.state.stage006.voiceTriggered = true;
+        stage.state.stage006.voiceTriggerTime = millis();
+        stage.state.stage006.activeVoiceIO = voiceIndex + 1;
+        stage.state.stage006.voicePlayedOnce = false;
+        stage.state.stage006.lastVoiceTime = millis();
+        
+        // 立即转入等待输入状态
+        stage.state.stage006.subState = 1; // SUB_WAITING_INPUT
+        return;
+    } else if (stage.state.stage006.subState == 1) {
+        // ========================== STEP_2_WAIT_INPUT: 等待玩家输入 ==========================
+        
+        // 语音IO恢复逻辑现在由pinManager自动处理，无需手动控制
+        // 检查语音IO是否已经自动恢复
+        if (stage.state.stage006.voiceTriggered && 
+            millis() - stage.state.stage006.voiceTriggerTime >= STAGE_006_0_VOICE_TRIGGER_LOW_TIME) {
+            stage.state.stage006.voiceTriggered = false;
+            stage.state.stage006.voicePlayedOnce = true;
+        }
+        
+        // 循环播放控制（仅在循环模式下）
+        if (STAGE_006_0_VOICE_PLAY_MODE == 1 && // 循环模式
+            stage.state.stage006.voicePlayedOnce && // 已播放过一次
+            !stage.state.stage006.voiceTriggered && // 当前没有正在播放
+            millis() - stage.state.stage006.lastVoiceTime >= STAGE_006_0_VOICE_LOOP_INTERVAL) {
             
-            // 触发第一个语音播放
-            if (!stage.state.stage006.voiceTriggered) {
-                stage.state.stage006.totalCount = 1;  // m从1开始
-                int voiceIndex = stage.state.stage006.totalCount % 4;  // 1%4=1
-                stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
-                                                           (voiceIndex == 1) ? 3 : 
-                                                           (voiceIndex == 2) ? 2 : 4;
-                
-                // 触发对应的语音IO
-                int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
-                               (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
-                               (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
-                                                   STAGE_006_0_VOICE_IO_4;
-                
-                digitalWrite(voicePin, LOW);
-                stage.state.stage006.voiceTriggered = true;
-                stage.state.stage006.voiceTriggerTime = millis();
-                stage.state.stage006.activeVoiceIO = voiceIndex + 1;
-                
-                Serial.print(F("🎵 触发语音IO"));
-                Serial.print(stage.state.stage006.activeVoiceIO);
-                Serial.print(F(" (m="));
-                Serial.print(stage.state.stage006.totalCount);
-                Serial.print(F(", m%4="));
-                Serial.print(voiceIndex);
-                Serial.print(F(", 正确按键="));
-                Serial.print(stage.state.stage006.currentCorrectButton);
-                Serial.println(F(")"));
-                
-                // 切换到等待输入状态
-                stage.state.stage006.subState = StageState::SUB_WAITING_INPUT;
-            }
-            break;
+            // 重新触发语音播放
+            int voiceIndex = (stage.state.stage006.totalCount - 1) % 4;
+            int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
+                           (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
+                           (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
+                                               STAGE_006_0_VOICE_IO_4;
             
-        case StageState::SUB_WAITING_INPUT:
-            // ========================== 等待玩家输入 ==========================
-            // 维持嘲讽按键呼吸效果（10秒循环）
-            if (stage.state.stage006.breathActive) {
-                unsigned long breathElapsed = elapsed - stage.state.stage006.breathStartTime;
-                unsigned long cycleTime = breathElapsed % STAGE_006_0_BREATH_CYCLE;
-                
-                // 根据时间表控制呼吸效果
+            pinManager.setPinTemporaryState(voicePin, LOW, STAGE_006_0_VOICE_TRIGGER_LOW_TIME, HIGH);
+            stage.state.stage006.voiceTriggered = true;
+            stage.state.stage006.voiceTriggerTime = millis();
+            stage.state.stage006.lastVoiceTime = millis();
+            stage.state.stage006.voicePlayedOnce = false;
+        }
+        
+        // 按键检测
+        if (!stage.state.stage006.buttonPressed) {
+            if (!stage.state.stage006.buttonDebouncing) {
+                // 不在防抖中，检测按键状态变化
                 for (int i = 0; i < 4; i++) {
-                    bool shouldBreathe = false;
+                    int currentState = digitalRead(C101_TAUNT_BUTTON_COM_PINS[i]);
                     
-                    // 检查当前时间是否在呼吸时间段内
-                    if ((cycleTime >= STAGE_006_0_TAUNT1_BREATH_1_START && 
-                         cycleTime < STAGE_006_0_TAUNT1_BREATH_1_START + STAGE_006_0_TAUNT1_BREATH_1_DUR) ||
-                        (cycleTime >= STAGE_006_0_TAUNT1_BREATH_3_START && 
-                         cycleTime < STAGE_006_0_TAUNT1_BREATH_3_START + STAGE_006_0_TAUNT1_BREATH_3_DUR)) {
-                        shouldBreathe = true;
+                    // 检测到按键从HIGH变为LOW（按下）
+                    if (stage.state.stage006.lastButtonStates[i] == HIGH && currentState == LOW) {
+                        // 启动防抖
+                        stage.state.stage006.buttonDebouncing = true;
+                        stage.state.stage006.debouncingButton = i;
+                        stage.state.stage006.debounceStartTime = millis();
+                        break;
                     }
                     
-                    // 更新呼吸状态（简化处理，所有按键同步）
-                    if (shouldBreathe) {
-                        MillisPWM::setBrightness(C101_TAUNT_BUTTON_LIGHT_PINS[i], 255);
-                    } else {
-                        MillisPWM::setBrightness(C101_TAUNT_BUTTON_LIGHT_PINS[i], 0);
-                    }
+                    // 更新状态记录
+                    stage.state.stage006.lastButtonStates[i] = currentState;
                 }
-            }
-            
-            // 恢复语音IO为高电平（1秒后）
-            if (stage.state.stage006.voiceTriggered && 
-                millis() - stage.state.stage006.voiceTriggerTime >= STAGE_006_0_VOICE_TRIGGER_LOW_TIME) {
-                int voicePin = (stage.state.stage006.activeVoiceIO == 1) ? STAGE_006_0_VOICE_IO_1 :
-                               (stage.state.stage006.activeVoiceIO == 2) ? STAGE_006_0_VOICE_IO_2 :
-                               (stage.state.stage006.activeVoiceIO == 3) ? STAGE_006_0_VOICE_IO_3 : 
-                                                                           STAGE_006_0_VOICE_IO_4;
-                digitalWrite(voicePin, HIGH);
-                stage.state.stage006.voiceTriggered = false;
-            }
-            
-            // 检测按键输入
-            if (!stage.state.stage006.buttonPressed) {
-                for (int i = 0; i < 4; i++) {
-                    if (digitalRead(C101_TAUNT_BUTTON_COM_PINS[i]) == LOW) {
-                        stage.state.stage006.buttonPressed = true;
-                        stage.state.stage006.pressedButton = i + 1;
+            } else {
+                // 正在防抖中，检查防抖是否完成
+                int buttonIndex = stage.state.stage006.debouncingButton;
+                int currentState = digitalRead(C101_TAUNT_BUTTON_COM_PINS[buttonIndex]);
+                unsigned long debounceElapsed = millis() - stage.state.stage006.debounceStartTime;
+                
+                if (currentState == LOW && debounceElapsed >= STAGE_006_0_BUTTON_DEBOUNCE_TIME) {
+                    // 防抖完成，确认按键按下
+                    Serial.print(F("✅ 按键"));
+                    Serial.print(buttonIndex + 1);
+                    Serial.println(F("按下"));
+                    
+                    stage.state.stage006.buttonPressed = true;
+                    stage.state.stage006.pressedButton = buttonIndex + 1;
+                    stage.state.stage006.buttonDebouncing = false;
+                    
+                    // 设置按键灯状态：只有按下的按键亮，其他熄灭
+                    for (int i = 0; i < 4; i++) {
+                        MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
+                        if (i == buttonIndex) {
+                            // 按下的按键设为HIGH亮
+                            pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], HIGH);
+                        } else {
+                            // 其他按键熄灭
+                            pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
+                        }
+                    }
+                    
+                    // 判断按键是否正确
+                    if (stage.state.stage006.pressedButton == stage.state.stage006.currentCorrectButton) {
+                        Serial.println(F("✅ 按键正确！"));
+                        stage.state.stage006.correctCount++;
                         
-                        Serial.print(F("🔘 检测到按键"));
-                        Serial.print(stage.state.stage006.pressedButton);
-                        Serial.println(F("被按下"));
+                        // 正确按键 - 点亮对应的植物灯
+                        int plantIndex = stage.state.stage006.correctCount - 1;
+                        if (plantIndex >= 0 && plantIndex < 4) {
+                            // 先停止PWM，再设置数字状态
+                            MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[plantIndex]);
+                            pinManager.setPinState(C101_PLANT_LIGHT_PINS[plantIndex], HIGH);
+                            stage.state.stage006.plantLightStates[plantIndex] = true;
+                            
+                            Serial.print(F("🌱 植物灯"));
+                            Serial.print(plantIndex + 1);
+                            Serial.println(F("点亮"));
+                        }
                         
-                        // 停止所有呼吸效果
-                        for (int j = 0; j < 4; j++) {
-                            MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[j]);
-                            if (j == i) {
-                                // 被按下的按键保持亮起
-                                digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[j], HIGH);
-                            } else {
-                                // 其他按键熄灭
-                                digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[j], LOW);
+                        // 重新启动所有已点亮植物灯的呼吸效果
+                        for (int i = 0; i < 4; i++) {
+                            if (stage.state.stage006.plantLightStates[i]) {
+                                MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[i]);
+                                MillisPWM::startBreathing(C101_PLANT_LIGHT_PINS[i], 3.0);
                             }
                         }
-                        stage.state.stage006.breathActive = false;
+                    } else {
+                        Serial.println(F("❌ 按键错误！"));
                         
-                        // 发送服务器跳转指令
-                        stage.state.stage006.totalCount++; // m+1
-                        int jumpIndex = stage.state.stage006.totalCount % 4;
-                        String jumpResult = (jumpIndex == 0) ? STAGE_006_0_JUMP_MOD_0 :
-                                           (jumpIndex == 1) ? STAGE_006_0_JUMP_MOD_1 :
-                                           (jumpIndex == 2) ? STAGE_006_0_JUMP_MOD_2 : 
-                                                              STAGE_006_0_JUMP_MOD_3;
-                        
-                        Serial.print(F("📤 发送流程跳转: "));
-                        Serial.print(jumpResult);
-                        Serial.print(F(" (m="));
-                        Serial.print(stage.state.stage006.totalCount);
-                        Serial.print(F(", m%4="));
-                        Serial.print(jumpIndex);
-                        Serial.println(F(")"));
-                        
-                        requestStageJump(jumpResult);
-                        
-                        // 判断正确或错误
-                        if (stage.state.stage006.pressedButton == stage.state.stage006.currentCorrectButton) {
-                            Serial.println(F("✅ 按键正确！"));
-                            stage.state.stage006.correctCount++;
-                            stage.state.stage006.subState = StageState::SUB_CORRECT;
-                            stage.state.stage006.correctStartTime = millis();
-                        } else {
-                            Serial.println(F("❌ 按键错误！"));
-                            stage.state.stage006.correctCount = 0;  // 重置正确计数
-                            stage.state.stage006.subState = StageState::SUB_ERROR;
-                            stage.state.stage006.errorStartTime = millis();
-                            
-                            // 发送错误跳转
-                            int errorGroup = ((stage.state.stage006.totalCount - 1) / 2) % 3;
-                            String errorJump = (errorGroup == 0) ? STAGE_006_0_ERROR_JUMP_1 :
-                                              (errorGroup == 1) ? STAGE_006_0_ERROR_JUMP_2 : 
-                                                                  STAGE_006_0_ERROR_JUMP_3;
-                            Serial.print(F("📤 发送错误跳转: "));
-                            Serial.println(errorJump);
-                            requestStageJump(errorJump);
+                        // 错误按键 - 停止所有植物灯呼吸并熄灭
+                        for (int i = 0; i < 4; i++) {
+                            MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[i]);
+                            pinManager.setPinState(C101_PLANT_LIGHT_PINS[i], LOW);
+                            stage.state.stage006.plantLightStates[i] = false;
                         }
                         
-                        break;  // 只处理第一个按下的按键
+                        stage.state.stage006.correctCount = 0;  // 重置正确计数
                     }
+                    
+                    // 发送游戏状态通知
+                    stage.state.stage006.totalCount++; // m+1
+                    int jumpIndex = (stage.state.stage006.totalCount - 1) % 4;
+                    String jumpResult = (jumpIndex == 0) ? STAGE_006_0_JUMP_MOD_0 :
+                                       (jumpIndex == 1) ? STAGE_006_0_JUMP_MOD_1 :
+                                       (jumpIndex == 2) ? STAGE_006_0_JUMP_MOD_2 : 
+                                                          STAGE_006_0_JUMP_MOD_3;
+                    
+                    if (stage.state.stage006.pressedButton == stage.state.stage006.currentCorrectButton) {
+                        // 正确按键的消息发送
+                        String message = "$[GAME]@C101{^STEP_STATUS^(current_step=\"006_0\",";
+                        message += "button_feedback=" + jumpResult + ")}#";
+                        
+                        Serial.print(F("📤 发送正确命令: "));
+                        Serial.println(message);
+                        harbingerClient.sendMessage(message);
+                        
+                        stage.state.stage006.subState = 2; // SUB_CORRECT
+                        stage.state.stage006.correctStartTime = millis();
+                    } else {
+                        // 错误按键的消息发送
+                        int errorGroup = ((stage.state.stage006.totalCount - 2) / 2) % 3;
+                        String errorJump = (errorGroup == 0) ? STAGE_006_0_ERROR_JUMP_1 :
+                                          (errorGroup == 1) ? STAGE_006_0_ERROR_JUMP_2 : 
+                                                              STAGE_006_0_ERROR_JUMP_3;
+                        
+                        String message = "$[GAME]@C101{^STEP_STATUS^(current_step=\"006_0\",";
+                        message += "button_feedback=" + jumpResult + ",";
+                        message += "error_music=" + errorJump + ")}#";
+                        
+                        Serial.print(F("📤 发送错误命令: "));
+                        Serial.println(message);
+                        harbingerClient.sendMessage(message);
+                        
+                        stage.state.stage006.subState = 3; // SUB_ERROR
+                        stage.state.stage006.errorStartTime = millis();
+                    }
+                } else if (currentState == HIGH) {
+                    // 按键在防抖期间被释放，取消防抖
+                    stage.state.stage006.buttonDebouncing = false;
+                    stage.state.stage006.lastButtonStates[buttonIndex] = HIGH;
                 }
             }
-            break;
+        }
+        
+    } else if (stage.state.stage006.subState == 2) {
+        // ========================== STEP_3_PROCESS_CORRECT: 处理正确按键 ==========================
+        
+        static bool step3Entered = false;
+        if (!step3Entered) {
+            Serial.println(F("🌱 进入STEP_3_PROCESS_CORRECT - 正确按键处理完成"));
+            step3Entered = true;
+        }
+        
+        unsigned long correctElapsed = millis() - stage.state.stage006.correctStartTime;
+        
+        // 检查是否达到成功条件
+        if (stage.state.stage006.correctCount >= STAGE_006_0_REQUIRED_CORRECT) {
+            Serial.println(F("🎉 游戏成功！达到所需正确数"));
+            notifyStageComplete("006_0", STAGE_006_0_SUCCESS_JUMP, elapsed);
+            stage.state.stage006.subState = 5; // SUB_SUCCESS
+            step3Entered = false;
+        } else if (correctElapsed >= 1000) {  // 1秒后继续下一轮
+            Serial.println(F("🔄 正确处理完成，转入下一轮准备"));
+            stage.state.stage006.subState = 4; // SUB_NEXT_ROUND
+            stage.state.stage006.errorStartTime = millis();
+            step3Entered = false;
+        }
+        
+    } else if (stage.state.stage006.subState == 3) {
+        // ========================== STEP_4_PROCESS_ERROR: 处理错误按键 ==========================
+        
+        static bool step4Entered = false;
+        if (!step4Entered) {
+            Serial.println(F("💀 进入STEP_4_PROCESS_ERROR - 错误处理中"));
+            step4Entered = true;
+        }
+        
+        unsigned long errorElapsed = millis() - stage.state.stage006.errorStartTime;
+        
+        // 被按下的错误按键也要熄灭（在1125ms时）
+        if (errorElapsed >= 1125 && stage.state.stage006.pressedButton > 0) {
+            int buttonIndex = stage.state.stage006.pressedButton - 1;
+            Serial.print(F("💡 熄灭错误按键"));
+            Serial.print(buttonIndex + 1);
+            Serial.println(F("灯光"));
+            MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[buttonIndex]);
+            pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[buttonIndex], LOW);
+            stage.state.stage006.pressedButton = 0;  // 标记已处理
+        }
+        
+        // 进入等待状态（增加延迟确保用户看到按键灯熄灭）
+        if (errorElapsed >= 2000) {  // 从1125ms改为2000ms，增加延迟
+            Serial.println(F("🔄 错误处理完成，转入下一轮准备"));
+            stage.state.stage006.subState = 4; // SUB_NEXT_ROUND
+            stage.state.stage006.errorStartTime = millis();
+            step4Entered = false;
+        }
+        
+    } else if (stage.state.stage006.subState == 4) {
+        // ========================== STEP_5_NEXT_ROUND: 准备下一轮 ==========================
+        
+        unsigned long waitElapsed = millis() - stage.state.stage006.errorStartTime;
+        
+        if (waitElapsed >= STAGE_006_0_ERROR_WAIT_TIME) {
+            // 重置按键状态
+            stage.state.stage006.buttonPressed = false;
+            stage.state.stage006.pressedButton = 0;
+            stage.state.stage006.buttonDebouncing = false;
             
-        case StageState::SUB_CORRECT:
-            // ========================== 正确处理 ==========================
-            {
-                unsigned long correctElapsed = millis() - stage.state.stage006.correctStartTime;
-                
-                // 植物灯依次点亮
-                int lightIndex = correctElapsed / STAGE_006_0_PLANT_ON_DELAY;
-                if (lightIndex != stage.state.stage006.plantOnIndex && lightIndex < stage.state.stage006.correctCount) {
-                    stage.state.stage006.plantOnIndex = lightIndex;
-                    
-                    // 确定要点亮的植物灯（根据按键顺序）
-                    int plantLight = stage.state.stage006.plantLightOrder[lightIndex];
-                    if (plantLight < 0) {
-                        // 记录这次点亮的植物灯
-                        plantLight = stage.state.stage006.currentCorrectButton - 1;
-                        stage.state.stage006.plantLightOrder[lightIndex] = plantLight;
-                    }
-                    
-                    // 启动植物灯呼吸效果
-                    MillisPWM::startBreathing(C101_PLANT_LIGHT_PINS[plantLight], 
-                                              STAGE_006_0_PLANT_BREATH_DURATION / 1000.0);
-                    Serial.print(F("🌱 植物灯"));
-                    Serial.print(plantLight + 1);
-                    Serial.println(F("开始呼吸"));
-                }
-                
-                // 检查是否达到成功条件
-                if (stage.state.stage006.correctCount >= STAGE_006_0_REQUIRED_CORRECT) {
-                    Serial.println(F("🎉 游戏成功！跳转到下一关"));
-                    notifyStageComplete("006_0", STAGE_006_0_SUCCESS_JUMP, elapsed);
-                    stage.state.stage006.subState = StageState::SUB_SUCCESS;
-                } else if (correctElapsed >= 1000) {  // 1秒后继续下一轮
-                    // 重新开始等待输入
-                    stage.state.stage006.buttonPressed = false;
-                    stage.state.stage006.breathActive = true;
-                    stage.state.stage006.breathStartTime = elapsed;
-                    
-                    // 恢复呼吸效果
-                    for (int i = 0; i < 4; i++) {
-                        digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
-                        MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0);
-                    }
-                    
-                    // 触发下一个语音
-                    int voiceIndex = stage.state.stage006.totalCount % 4;
-                    stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
-                                                               (voiceIndex == 1) ? 3 : 
-                                                               (voiceIndex == 2) ? 2 : 4;
-                    
-                    int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
-                                   (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
-                                   (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
-                                                       STAGE_006_0_VOICE_IO_4;
-                    
-                    digitalWrite(voicePin, LOW);
-                    stage.state.stage006.voiceTriggered = true;
-                    stage.state.stage006.voiceTriggerTime = millis();
-                    stage.state.stage006.activeVoiceIO = voiceIndex + 1;
-                    
-                    Serial.print(F("🎵 触发下一个语音IO"));
-                    Serial.print(stage.state.stage006.activeVoiceIO);
-                    Serial.print(F(" (正确数: "));
-                    Serial.print(stage.state.stage006.correctCount);
-                    Serial.print(F("/"));
-                    Serial.print(STAGE_006_0_REQUIRED_CORRECT);
-                    Serial.println(F(")"));
-                    
-                    stage.state.stage006.subState = StageState::SUB_WAITING_INPUT;
-                }
+            // 重置语音状态 - 确保音频IO恢复HIGH状态
+            stage.state.stage006.voiceTriggered = false;
+            stage.state.stage006.voiceTriggerTime = 0;
+            stage.state.stage006.voicePlayedOnce = false;
+            stage.state.stage006.lastVoiceTime = 0;
+            
+            // 强制重置所有语音IO为HIGH状态
+            pinManager.setPinState(STAGE_006_0_VOICE_IO_1, HIGH);
+            pinManager.setPinState(STAGE_006_0_VOICE_IO_2, HIGH);
+            pinManager.setPinState(STAGE_006_0_VOICE_IO_3, HIGH);
+            pinManager.setPinState(STAGE_006_0_VOICE_IO_4, HIGH);
+            Serial.println(F("🔄 所有语音IO重置为HIGH状态"));
+            
+            // 重新启动所有按键呼吸效果
+            for (int i = 0; i < 4; i++) {
+                MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
+                pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
+                MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0);
             }
-            break;
+            Serial.println(F("🔄 所有按键呼吸效果重新启动"));
             
-        case StageState::SUB_ERROR:
-            // ========================== 错误处理 ==========================
-            {
-                unsigned long errorElapsed = millis() - stage.state.stage006.errorStartTime;
-                
-                // 植物灯依次熄灭
-                int offIndex = errorElapsed / STAGE_006_0_PLANT_OFF_DELAY;
-                if (offIndex != stage.state.stage006.plantOffIndex && offIndex < 4) {
-                    stage.state.stage006.plantOffIndex = offIndex;
-                    
-                    // 停止呼吸并熄灭
-                    MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[offIndex]);
-                    digitalWrite(C101_PLANT_LIGHT_PINS[offIndex], LOW);
-                    
-                    Serial.print(F("🌱 植物灯"));
-                    Serial.print(offIndex + 1);
-                    Serial.println(F("熄灭"));
-                }
-                
-                // 被按下的错误按键也要熄灭（在1125ms时）
-                if (errorElapsed >= 1125 && stage.state.stage006.pressedButton > 0) {
-                    int buttonIndex = stage.state.stage006.pressedButton - 1;
-                    digitalWrite(C101_TAUNT_BUTTON_LIGHT_PINS[buttonIndex], LOW);
-                    stage.state.stage006.pressedButton = 0;  // 标记已处理
-                }
-                
-                // 进入等待状态
-                if (errorElapsed >= 1125) {
-                    stage.state.stage006.subState = StageState::SUB_ERROR_WAIT;
-                    stage.state.stage006.errorStartTime = millis();  // 重置为等待开始时间
-                    
-                    // 重置植物灯顺序记录
-                    for (int i = 0; i < 4; i++) {
-                        stage.state.stage006.plantLightOrder[i] = -1;
-                    }
-                }
-            }
-            break;
+            // 计算下一轮的正确按键和语音IO
+            int voiceIndex = (stage.state.stage006.totalCount - 1) % 4;
+            stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
+                                                       (voiceIndex == 1) ? 3 : 
+                                                       (voiceIndex == 2) ? 2 : 4;
             
-        case StageState::SUB_ERROR_WAIT:
-            // ========================== 错误后等待 ==========================
-            {
-                unsigned long waitElapsed = millis() - stage.state.stage006.errorStartTime;
-                
-                if (waitElapsed >= STAGE_006_0_ERROR_WAIT_TIME) {
-                    // 重新开始游戏
-                    Serial.println(F("🔄 错误处理完成，重新开始"));
-                    
-                    stage.state.stage006.buttonPressed = false;
-                    stage.state.stage006.breathActive = true;
-                    stage.state.stage006.breathStartTime = elapsed;
-                    stage.state.stage006.plantOnIndex = 0;
-                    stage.state.stage006.plantOffIndex = 0;
-                    
-                    // 恢复呼吸效果
-                    for (int i = 0; i < 4; i++) {
-                        MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0);
-                    }
-                    
-                    // 触发下一个语音（使用递增后的m值）
-                    int voiceIndex = stage.state.stage006.totalCount % 4;
-                    stage.state.stage006.currentCorrectButton = (voiceIndex == 0) ? 1 : 
-                                                               (voiceIndex == 1) ? 3 : 
-                                                               (voiceIndex == 2) ? 2 : 4;
-                    
-                    int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
-                                   (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
-                                   (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
-                                                       STAGE_006_0_VOICE_IO_4;
-                    
-                    digitalWrite(voicePin, LOW);
-                    stage.state.stage006.voiceTriggered = true;
-                    stage.state.stage006.voiceTriggerTime = millis();
-                    stage.state.stage006.activeVoiceIO = voiceIndex + 1;
-                    
-                    Serial.print(F("🎵 重新触发语音IO"));
-                    Serial.print(stage.state.stage006.activeVoiceIO);
-                    Serial.println(F(" (错误后重试)"));
-                    
-                    stage.state.stage006.subState = StageState::SUB_WAITING_INPUT;
-                }
-            }
-            break;
+            int voicePin = (voiceIndex == 0) ? STAGE_006_0_VOICE_IO_1 :
+                           (voiceIndex == 1) ? STAGE_006_0_VOICE_IO_3 :
+                           (voiceIndex == 2) ? STAGE_006_0_VOICE_IO_2 : 
+                                               STAGE_006_0_VOICE_IO_4;
             
-        case StageState::SUB_SUCCESS:
-            // ========================== 成功完成 ==========================
-            // 保持当前状态，等待服务器处理
-            break;
+            Serial.print(F("🎵 播放语音IO"));
+            Serial.print(voiceIndex + 1);
+            Serial.print(F("，正确按键="));
+            Serial.println(stage.state.stage006.currentCorrectButton);
+            
+            // 触发下一轮语音
+            pinManager.setPinTemporaryState(voicePin, LOW, STAGE_006_0_VOICE_TRIGGER_LOW_TIME, HIGH);
+            stage.state.stage006.voiceTriggered = true;
+            stage.state.stage006.voiceTriggerTime = millis();
+            stage.state.stage006.activeVoiceIO = voiceIndex + 1;
+            stage.state.stage006.lastVoiceTime = millis();
+            
+            // 转入等待输入状态
+            stage.state.stage006.subState = 1; // SUB_WAITING_INPUT
+            Serial.println(F("�� 准备完成，返回等待输入状态"));
+        }
+        
+    } else if (stage.state.stage006.subState == 5) {
+        // ========================== STEP_6_SUCCESS: 游戏成功 ==========================
+        
+        // 游戏成功，不需要更新逻辑，等待跳转
+        return;
     }
+}
+
+// 更新单个环节
+void GameFlowManager::updateStage(int index) {
+    if (index < 0 || index >= MAX_PARALLEL_STAGES || !stages[index].running) {
+        return;
+    }
+    
+    // 检查全局停止标志
+    if (globalStopped) {
+        return;
+    }
+    
+    const String& stageId = stages[index].stageId;
+    
+    // 根据环节ID调用对应的更新方法
+    if (stageId == "000_0") {
+        updateStep000(index);
+    } else if (stageId == "001_1") {
+        updateStep001_1(index);
+    } else if (stageId == "001_2") {
+        updateStep001_2(index);
+    } else if (stageId == "002_0") {
+        updateStep002(index);
+    } else if (stageId == "006_0") {
+        updateStep006(index);
+    }
+    
+    // 更新兼容性变量
+    updateCompatibilityVars();
+}
+
+// 检查紧急开门功能
+void GameFlowManager::checkEmergencyDoorControl() {
+    // ========================== 紧急开门控制 (最高优先级) ==========================
+    // 无视任何步骤，只要Pin24触发，就让Pin26解锁10秒
+    updateEmergencyDoorControl();
 }

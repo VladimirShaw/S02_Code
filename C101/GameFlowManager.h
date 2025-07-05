@@ -317,13 +317,20 @@
 
 // 语音IO控制配置
 #define STAGE_006_0_VOICE_TRIGGER_LOW_TIME  1000     // LOW电平保持时间(ms)
-#define STAGE_006_0_VOICE_IO_1              A0       // 第1个语音IO引脚 (C01MA05的IO1)
+#define STAGE_006_0_VOICE_PLAY_MODE         0        // 播放模式：0=单次播放，1=循环播放
+#define STAGE_006_0_VOICE_LOOP_INTERVAL     5000     // 循环播放间隔(ms)
+
+// 按键防抖配置
+#define STAGE_006_0_BUTTON_DEBOUNCE_TIME    50       // 按键防抖时间(ms)
+#define STAGE_006_0_BUTTON_CHECK_INTERVAL   10       // 按键检测间隔(ms)
+
+#define STAGE_006_0_VOICE_IO_1              15       // 第1个语音IO引脚 (C01MA05的IO1)
 #define STAGE_006_0_VOICE_IO_2              16       // 第2个语音IO引脚 (C01MA06的IO1)
 #define STAGE_006_0_VOICE_IO_3              A4       // 第3个语音IO引脚 (C01MA07的IO1)
-#define STAGE_006_0_VOICE_IO_4              A8       // 第4个语音IO引脚 (C01MA08的IO1)
+#define STAGE_006_0_VOICE_IO_4              20       // 第4个语音IO引脚 (C01MA08的IO1)
 
 // 错误处理配置
-#define STAGE_006_0_ERROR_WAIT_TIME         3000     // 错误后等待时间(ms)
+#define STAGE_006_0_ERROR_WAIT_TIME         6000     // 错误后等待时间(ms)
 #define STAGE_006_0_PLANT_OFF_DELAY         375      // 植物灯熄灭间隔(ms)
 
 // 正确处理配置
@@ -375,6 +382,62 @@
 #define STAGE_006_0_BUTTERFLY_CARD_STATE    LOW     // 门禁读卡器继电器状态 (Pin27)
 #define STAGE_006_0_BUTTERFLY_LIGHT_STATE   HIGH    // 蝴蝶灯状态 (PinA15) - 保持HIGH
 #define STAGE_006_0_AD_FAN_STATE            LOW     // 广告风扇状态 (PinA14)
+
+// ========================== 统一引脚状态管理系统 ==========================
+
+// 语音IO引脚状态结构
+struct VoiceIOState {
+    int pin;                    // 引脚号
+    bool desiredState;          // 期望状态：true=HIGH, false=LOW
+    bool currentState;          // 当前实际状态
+    unsigned long changeTime;   // 状态改变时间
+    unsigned long duration;     // 如果是临时状态，持续时间（0表示永久）
+    bool needsUpdate;           // 是否需要更新硬件状态
+};
+
+// 最大管理的引脚数量
+#define MAX_MANAGED_PINS 35
+
+// 全局引脚状态管理器
+class UnifiedPinManager {
+private:
+    VoiceIOState managedPins[MAX_MANAGED_PINS];
+    int managedPinCount;
+    
+public:
+    UnifiedPinManager() : managedPinCount(0) {}
+    
+    // 注册需要管理的引脚
+    void registerPin(int pin, bool initialState = HIGH);
+    
+    // 设置引脚状态（立即生效）
+    void setPinState(int pin, bool state);
+    
+    // 设置引脚临时状态（指定时间后自动恢复）
+    void setPinTemporaryState(int pin, bool tempState, unsigned long duration, bool restoreState);
+    
+    // 检查引脚是否被PWM控制（避免冲突）
+    bool isPinPWMControlled(int pin);
+    
+    // 统一更新所有引脚状态
+    void updateAllPins();
+    
+    // 获取引脚当前状态
+    bool getPinState(int pin);
+    
+    // 调试：打印所有引脚状态
+    void printPinStates();
+    
+private:
+    // 查找引脚索引
+    int findPinIndex(int pin);
+    
+    // 实际更新单个引脚
+    void updateSinglePin(int index);
+};
+
+// 全局引脚管理器实例
+extern UnifiedPinManager pinManager;
 
 class GameFlowManager {
 private:
@@ -458,6 +521,14 @@ private:
                 bool voiceTriggered;           // 语音是否已触发
                 unsigned long voiceTriggerTime;// 语音触发时间
                 int activeVoiceIO;             // 当前激活的语音IO(1-4)
+                bool voicePlayedOnce;          // 是否已播放过一次（单次模式用）
+                unsigned long lastVoiceTime;   // 上次语音播放时间（循环模式用）
+                
+                // 按键防抖状态
+                bool buttonDebouncing;         // 是否正在防抖中
+                int debouncingButton;          // 正在防抖的按键(0-3)
+                unsigned long debounceStartTime; // 防抖开始时间
+                bool lastButtonStates[4];      // 上次按键状态记录
                 
                 // 错误处理状态
                 unsigned long errorStartTime;  // 错误处理开始时间
@@ -469,6 +540,7 @@ private:
                 int plantOnIndex;              // 植物灯点亮索引(0-3)
                 unsigned long plantOnTime;     // 植物灯点亮时间
                 int plantLightOrder[4];        // 植物灯点亮顺序
+                bool plantLightStates[4];      // 植物灯状态(true=已点亮, false=未点亮)
             } stage006;
         } state;
         
@@ -527,7 +599,8 @@ private:
 public:
     // ========================== 构造和初始化 ==========================
     GameFlowManager();
-    void begin();                                   // 初始化（包含音量设置）
+    // 初始化
+    bool begin();
     
     // ========================== 环节控制 ==========================
     bool startStage(const String& stageId);         // 启动指定环节
@@ -550,7 +623,9 @@ public:
     void printAvailableStages();                    // 打印所有可用环节
     
     // ========================== 更新和调试功能 ==========================
-    void update();                                  // 游戏流程更新（必须调用）
+    void update();                                  // 主更新循环
+    void updateStage(int index);                    // 更新单个环节
+    void checkEmergencyDoorControl();               // 检查紧急开门功能
     void printStatus();                             // 打印当前状态
     
     // ========================== 环节跳转请求 ==========================

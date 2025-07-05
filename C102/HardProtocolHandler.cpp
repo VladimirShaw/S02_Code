@@ -1,5 +1,8 @@
 #include "HardProtocolHandler.h"
 
+// 外部全局实例
+extern BY_VoiceController_Unified voice;
+
 // 全局实例
 HardProtocolHandler hardProtocolHandler;
 
@@ -144,6 +147,9 @@ bool HardProtocolHandler::executeComponentControl(const String& componentId, con
         return controlLighting(componentId, action, controlParams);
     } else if (componentType == "AL" || componentType == "RL") {
         return controlPower(componentId, action, controlParams);
+    } else if (componentType == "MA") {
+        // 处理音频模块控制
+        return controlAudio(componentId, action, controlParams);
     }
     
     return false;
@@ -179,6 +185,67 @@ bool HardProtocolHandler::controlPower(const String& componentId, const String& 
     } else if (action == "off" || action == "close") {
         digitalWrite(pin, LOW);
         return true;
+    }
+    
+    return false;
+}
+
+bool HardProtocolHandler::controlAudio(const String& componentId, const String& action, const String& controlParams) {
+    // 解析音频通道号 (C01MA03 -> 通道3)
+    String channelStr = componentId.substring(5, 7);  // 获取"03"
+    int channel = channelStr.toInt();  // 转换为数字3
+    
+    if (channel < 1 || channel > 4) {
+        #ifdef DEBUG
+        Serial.print(F("无效的音频通道: "));
+        Serial.println(channel);
+        #endif
+        return false;
+    }
+    
+    if (action == "PLAY") {
+        // 解析音频ID (params=sound_id:213)
+        int colonPos = controlParams.indexOf(':');
+        if (colonPos > 0) {
+            String soundIdStr = controlParams.substring(colonPos + 1);
+            int soundId = soundIdStr.toInt();
+            
+            #ifdef DEBUG
+            Serial.print(F("🎵 播放音频: 通道"));
+            Serial.print(channel);
+            Serial.print(F(" -> 音频"));
+            Serial.println(soundId);
+            #endif
+            
+            // 调用语音控制器播放音频
+            voice.playSong(channel, soundId);
+            return true;
+        }
+    } else if (action == "STOP") {
+        #ifdef DEBUG
+        Serial.print(F("⏹️ 停止通道"));
+        Serial.println(channel);
+        #endif
+        
+        voice.stop(channel);
+        return true;
+    } else if (action == "VOLUME") {
+        // 支持音量控制 (params=volume:20)
+        int colonPos = controlParams.indexOf(':');
+        if (colonPos > 0) {
+            String volumeStr = controlParams.substring(colonPos + 1);
+            int volume = volumeStr.toInt();
+            
+            #ifdef DEBUG
+            Serial.print(F("🔊 设置通道"));
+            Serial.print(channel);
+            Serial.print(F("音量为"));
+            Serial.println(volume);
+            #endif
+            
+            voice.setVolume(channel, volume);
+            return true;
+        }
     }
     
     return false;

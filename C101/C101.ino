@@ -48,8 +48,13 @@ void setup() {
     DIO_BEGIN();               // 数字IO控制器
     commandProcessor.begin();  // 命令处理器
     gameStageManager.begin();  // 游戏环节状态机
-    gameFlowManager.begin();   // 游戏流程管理器
-    // gameFlowManager.setStagePrefix(C101_STAGE_PREFIX);  // C101版本不需要前缀设置
+    
+    // 初始化游戏流程管理器
+    if (!gameFlowManager.begin()) {
+        Serial.println(F("❌ 游戏流程管理器初始化失败"));
+        while(1); // 停止运行
+    }
+    
     gameProtocolHandler.begin(); // 游戏协议处理器
     
     // ========================== 统一语音控制器初始化 ==========================

@@ -700,11 +700,21 @@ void GameFlowManager::updateStep001_2(int index) {
         resetChannelVolume(STAGE_001_2_FADE_CHANNEL);
         
         if (strlen(STAGE_001_2_NEXT_STAGE) > 0) {
-            Serial.print(F("⏰ [槽位"));
-            Serial.print(index);
-            Serial.print(F("] 环节001_2完成，跳转到"));
-            Serial.println(STAGE_001_2_NEXT_STAGE);
-            notifyStageComplete("001_2", STAGE_001_2_NEXT_STAGE, elapsed);
+            // 检查下一环节是否已经在运行
+            if (!isStageRunning(STAGE_001_2_NEXT_STAGE)) {
+                Serial.print(F("⏰ [槽位"));
+                Serial.print(index);
+                Serial.print(F("] 环节001_2完成，跳转到"));
+                Serial.println(STAGE_001_2_NEXT_STAGE);
+                notifyStageComplete("001_2", STAGE_001_2_NEXT_STAGE, elapsed);
+            } else {
+                Serial.print(F("⚠️ [槽位"));
+                Serial.print(index);
+                Serial.print(F("] 环节001_2定时跳转取消，目标环节"));
+                Serial.print(STAGE_001_2_NEXT_STAGE);
+                Serial.println(F("已在运行"));
+                stage.jumpRequested = true;  // 标记为已处理，避免重复检查
+            }
         } else {
             Serial.print(F("⏰ [槽位"));
             Serial.print(index);
@@ -757,10 +767,28 @@ void GameFlowManager::updateStep002(int index) {
     
     // 60秒后环节完成（不进行跳转通知）
     if (!stage.jumpRequested && elapsed >= STAGE_002_0_DURATION) {
-        Serial.print(F("⏰ [槽位"));
-        Serial.print(index);
-        Serial.println(F("] 环节002_0完成（不进行跳转通知）"));
-        stage.jumpRequested = true;  // 标记为已完成，避免重复执行
+        if (strlen(STAGE_002_0_NEXT_STAGE) > 0) {
+            // 检查下一环节是否已经在运行
+            if (!isStageRunning(STAGE_002_0_NEXT_STAGE)) {
+                Serial.print(F("⏰ [槽位"));
+                Serial.print(index);
+                Serial.print(F("] 环节002_0完成，跳转到"));
+                Serial.println(STAGE_002_0_NEXT_STAGE);
+                notifyStageComplete("002_0", STAGE_002_0_NEXT_STAGE, elapsed);
+            } else {
+                Serial.print(F("⚠️ [槽位"));
+                Serial.print(index);
+                Serial.print(F("] 环节002_0定时跳转取消，目标环节"));
+                Serial.print(STAGE_002_0_NEXT_STAGE);
+                Serial.println(F("已在运行"));
+                stage.jumpRequested = true;  // 标记为已处理，避免重复检查
+            }
+        } else {
+            Serial.print(F("⏰ [槽位"));
+            Serial.print(index);
+            Serial.println(F("] 环节002_0完成（不进行跳转通知）"));
+            stage.jumpRequested = true;  // 标记为已完成，避免重复执行
+        }
     }
 }
 
