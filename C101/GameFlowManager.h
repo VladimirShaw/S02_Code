@@ -541,6 +541,11 @@ private:
                 unsigned long plantOnTime;     // 植物灯点亮时间
                 int plantLightOrder[4];        // 植物灯点亮顺序
                 bool plantLightStates[4];      // 植物灯状态(true=已点亮, false=未点亮)
+                
+                // 植物灯时序呼吸效果状态
+                bool plantBreathActive;        // 植物灯时序呼吸是否激活
+                unsigned long plantBreathStartTime; // 植物灯时序呼吸开始时间
+                int plantBreathIndex;          // 当前检查的植物灯索引(0-3)
             } stage006;
         } state;
         

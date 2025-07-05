@@ -699,6 +699,16 @@ bool GameFlowManager::startStage(const String& stageId) {
             stages[slot].state.stage006.plantLightOrder[i] = -1;
         }
         
+        // 初始化植物灯状态记录
+        for (int i = 0; i < 4; i++) {
+            stages[slot].state.stage006.plantLightStates[i] = false;
+        }
+        
+        // 初始化植物灯时序呼吸状态
+        stages[slot].state.stage006.plantBreathActive = false;
+        stages[slot].state.stage006.plantBreathStartTime = 0;
+        stages[slot].state.stage006.plantBreathIndex = 0;
+        
         // 初始化嘲讽按键输入引脚
         for (int i = 0; i < C101_TAUNT_BUTTON_COUNT; i++) {
             pinMode(C101_TAUNT_BUTTON_COM_PINS[i], INPUT_PULLUP);
@@ -833,6 +843,7 @@ void GameFlowManager::stopAllStages() {
     // 停止所有植物灯呼吸效果（000_0环节相关）
     for (int i = 0; i < C101_PLANT_LIGHT_COUNT; i++) {
         MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[i]);
+        MillisPWM::stop(C101_PLANT_LIGHT_PINS[i]);
         pinManager.setPinState(C101_PLANT_LIGHT_PINS[i], LOW);
     }
     Serial.println(F("💡 所有植物灯效果已停止"));
@@ -840,6 +851,7 @@ void GameFlowManager::stopAllStages() {
     // 停止所有画灯效果（002_0环节相关）
     for (int i = 0; i < C101_PAINTING_LIGHT_COUNT; i++) {
         MillisPWM::stopBreathing(C101_PAINTING_LIGHT_PINS[i]);
+        MillisPWM::stop(C101_PAINTING_LIGHT_PINS[i]);
         pinManager.setPinState(C101_PAINTING_LIGHT_PINS[i], LOW);
     }
     Serial.println(F("🎨 所有画灯效果已停止"));
@@ -847,6 +859,7 @@ void GameFlowManager::stopAllStages() {
     // 停止所有按键灯呼吸效果（006_0环节相关）
     for (int i = 0; i < 4; i++) {
         MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
+        MillisPWM::stop(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
         pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
     }
     Serial.println(F("💡 所有按键灯效果已停止"));
@@ -1744,7 +1757,8 @@ void GameFlowManager::updateStep006(int index) {
                             // 按下的按键设为HIGH亮
                             pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], HIGH);
                         } else {
-                            // 其他按键熄灭
+                            // 其他按键先停止PWM，再设为LOW
+                            MillisPWM::stop(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
                             pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
                         }
                     }
@@ -1754,8 +1768,8 @@ void GameFlowManager::updateStep006(int index) {
                         Serial.println(F("✅ 按键正确！"));
                         stage.state.stage006.correctCount++;
                         
-                        // 正确按键 - 点亮对应的植物灯
-                        int plantIndex = stage.state.stage006.correctCount - 1;
+                        // 正确按键 - 点亮对应的植物灯（按键1对应植物灯1）
+                        int plantIndex = stage.state.stage006.pressedButton - 1; // 按键1对应植物灯0
                         if (plantIndex >= 0 && plantIndex < 4) {
                             // 先停止PWM，再设置数字状态
                             MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[plantIndex]);
@@ -1767,24 +1781,25 @@ void GameFlowManager::updateStep006(int index) {
                             Serial.println(F("点亮"));
                         }
                         
-                        // 重新启动所有已点亮植物灯的呼吸效果
-                        for (int i = 0; i < 4; i++) {
-                            if (stage.state.stage006.plantLightStates[i]) {
-                                MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[i]);
-                                MillisPWM::startBreathing(C101_PLANT_LIGHT_PINS[i], 3.0);
-                            }
-                        }
+                        // 启动植物灯时序呼吸效果（375ms间隔）
+                        stage.state.stage006.plantBreathStartTime = millis();
+                        stage.state.stage006.plantBreathIndex = 0;
+                        stage.state.stage006.plantBreathActive = true;
+                        
+                        Serial.println(F("🌱 开始植物灯时序呼吸效果"));
                     } else {
                         Serial.println(F("❌ 按键错误！"));
                         
                         // 错误按键 - 停止所有植物灯呼吸并熄灭
                         for (int i = 0; i < 4; i++) {
                             MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[i]);
+                            MillisPWM::stop(C101_PLANT_LIGHT_PINS[i]);
                             pinManager.setPinState(C101_PLANT_LIGHT_PINS[i], LOW);
                             stage.state.stage006.plantLightStates[i] = false;
                         }
                         
                         stage.state.stage006.correctCount = 0;  // 重置正确计数
+                        stage.state.stage006.plantBreathActive = false; // 停止植物灯呼吸时序
                     }
                     
                     // 发送游戏状态通知
@@ -1874,6 +1889,7 @@ void GameFlowManager::updateStep006(int index) {
             Serial.print(buttonIndex + 1);
             Serial.println(F("灯光"));
             MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[buttonIndex]);
+            MillisPWM::stop(C101_TAUNT_BUTTON_LIGHT_PINS[buttonIndex]);
             pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[buttonIndex], LOW);
             stage.state.stage006.pressedButton = 0;  // 标记已处理
         }
@@ -1913,6 +1929,7 @@ void GameFlowManager::updateStep006(int index) {
             // 重新启动所有按键呼吸效果
             for (int i = 0; i < 4; i++) {
                 MillisPWM::stopBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
+                MillisPWM::stop(C101_TAUNT_BUTTON_LIGHT_PINS[i]);
                 pinManager.setPinState(C101_TAUNT_BUTTON_LIGHT_PINS[i], LOW);
                 MillisPWM::startBreathing(C101_TAUNT_BUTTON_LIGHT_PINS[i], 3.0);
             }
@@ -1952,6 +1969,41 @@ void GameFlowManager::updateStep006(int index) {
         // 游戏成功，不需要更新逻辑，等待跳转
         return;
     }
+
+    // ========================== 植物灯时序呼吸效果处理 ==========================
+    if (stage.state.stage006.plantBreathActive) {
+        unsigned long breathElapsed = millis() - stage.state.stage006.plantBreathStartTime;
+        unsigned long currentCheckTime = stage.state.stage006.plantBreathIndex * 375; // 每375ms检查一次
+        
+        if (breathElapsed >= currentCheckTime) {
+            int currentPlantIndex = stage.state.stage006.plantBreathIndex;
+            
+            if (currentPlantIndex < 4) {
+                // 检查当前植物灯是否应该呼吸
+                if (stage.state.stage006.plantLightStates[currentPlantIndex]) {
+                    // 该植物灯已点亮，启动呼吸效果
+                    MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[currentPlantIndex]);
+                    MillisPWM::startBreathing(C101_PLANT_LIGHT_PINS[currentPlantIndex], 3.0);
+                    Serial.print(F("🌱 植物灯"));
+                    Serial.print(currentPlantIndex + 1);
+                    Serial.println(F("开始呼吸"));
+                } else {
+                    // 该植物灯未点亮，确保停止呼吸并设为LOW
+                    MillisPWM::stopBreathing(C101_PLANT_LIGHT_PINS[currentPlantIndex]);
+                    MillisPWM::stop(C101_PLANT_LIGHT_PINS[currentPlantIndex]);
+                    pinManager.setPinState(C101_PLANT_LIGHT_PINS[currentPlantIndex], LOW);
+                }
+                
+                stage.state.stage006.plantBreathIndex++;
+            } else {
+                // 所有植物灯都检查完毕，停止时序呼吸
+                stage.state.stage006.plantBreathActive = false;
+                Serial.println(F("🌱 植物灯时序呼吸效果完成"));
+            }
+        }
+    }
+
+    // ========================== 按键防抖处理 ==========================
 }
 
 // 更新单个环节
