@@ -1870,10 +1870,11 @@ void GameFlowManager::updateStep006(int index) {
             Serial.println(F("🎉 游戏成功！达到所需正确数"));
             notifyStageComplete("006_0", STAGE_006_0_SUCCESS_JUMP, elapsed);
             stage.state.stage006.subState = 5; // SUB_SUCCESS
-        } else if (correctElapsed >= 1000) {  // 1秒后继续下一轮
+        } else if (correctElapsed >= STAGE_006_0_CORRECT_PROCESS_TIME) {  // 使用配置项替代硬编码的1000
             Serial.println(F("🔄 正确处理完成，转入下一轮准备"));
             stage.state.stage006.subState = 4; // SUB_NEXT_ROUND
-            stage.state.stage006.errorStartTime = millis();
+            stage.state.stage006.errorStartTime = millis();  // 🔧 修复：使用统一的时间变量名
+            stage.state.stage006.isCorrectWait = true;  // 标记为正确处理后的等待
         }
         
     } else if (stage.state.stage006.subState == 3) {
@@ -1894,10 +1895,11 @@ void GameFlowManager::updateStep006(int index) {
         }
         
         // 进入等待状态（增加延迟确保用户看到按键灯熄灭）
-        if (errorElapsed >= 2000) {  // 从1125ms改为2000ms，增加延迟
+        if (errorElapsed >= STAGE_006_0_ERROR_PROCESS_TIME) {  // 使用配置项替代硬编码的2000ms
             Serial.println(F("🔄 错误处理完成，转入下一轮准备"));
             stage.state.stage006.subState = 4; // SUB_NEXT_ROUND
             stage.state.stage006.errorStartTime = millis();
+            stage.state.stage006.isCorrectWait = false;  // 标记为错误处理后的等待
         }
         
     } else if (stage.state.stage006.subState == 4) {
@@ -1905,7 +1907,12 @@ void GameFlowManager::updateStep006(int index) {
         
         unsigned long waitElapsed = millis() - stage.state.stage006.errorStartTime;
         
-        if (waitElapsed >= STAGE_006_0_ERROR_WAIT_TIME) {
+        // 根据是正确还是错误处理后的等待，使用不同的等待时间
+        unsigned long waitTime = stage.state.stage006.isCorrectWait ? 
+                                 STAGE_006_0_CORRECT_WAIT_TIME : 
+                                 STAGE_006_0_ERROR_WAIT_TIME;
+        
+        if (waitElapsed >= waitTime) {
             // 重置按键状态
             stage.state.stage006.buttonPressed = false;
             stage.state.stage006.pressedButton = 0;

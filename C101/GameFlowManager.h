@@ -330,10 +330,13 @@
 #define STAGE_006_0_VOICE_IO_4              20       // 第4个语音IO引脚 (C01MA08的IO1)
 
 // 错误处理配置
-#define STAGE_006_0_ERROR_WAIT_TIME         6000     // 错误后等待时间(ms)
+#define STAGE_006_0_ERROR_WAIT_TIME         3000     // 错误后等待时间(ms)
+#define STAGE_006_0_ERROR_PROCESS_TIME      3000     // 错误按键处理时间(ms) - 新增
 #define STAGE_006_0_PLANT_OFF_DELAY         375      // 植物灯熄灭间隔(ms)
 
 // 正确处理配置
+#define STAGE_006_0_CORRECT_PROCESS_TIME    1000     // 正确按键处理时间(ms) - 新增
+#define STAGE_006_0_CORRECT_WAIT_TIME       700     // 正确后等待时间(ms) - 新增
 #define STAGE_006_0_PLANT_ON_DELAY          375      // 植物灯点亮间隔(ms)
 #define STAGE_006_0_PLANT_BREATH_DURATION   3000     // 植物灯呼吸周期(ms)
 #define STAGE_006_0_PLANT_BREATH_ON         1500     // 植物灯呼吸亮时间(ms)
@@ -528,6 +531,7 @@ private:
                 // 时序控制状态 (必要)
                 unsigned long errorStartTime;  // 错误处理开始时间
                 unsigned long correctStartTime; // 正确处理开始时间
+                bool isCorrectWait;             // 是否是正确处理后的等待状态
                 
                 // 植物灯状态 (必要)
                 bool plantLightStates[4];      // 植物灯状态记录
